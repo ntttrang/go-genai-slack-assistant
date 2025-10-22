@@ -1,0 +1,32 @@
+package http
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/ntttrang/python-genai-your-slack-assistant/infrastructure/metrics"
+	"go.uber.org/zap"
+)
+
+type MetricsHandler struct {
+	metrics *metrics.Metrics
+	logger  *zap.Logger
+}
+
+func NewMetricsHandler(metrics *metrics.Metrics, logger *zap.Logger) *MetricsHandler {
+	return &MetricsHandler{
+		metrics: metrics,
+		logger:  logger,
+	}
+}
+
+func (h *MetricsHandler) HandleMetrics(w http.ResponseWriter, r *http.Request) {
+	stats := h.metrics.GetStats()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		h.logger.Error("Failed to encode metrics response", zap.Error(err))
+	}
+}
