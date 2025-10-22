@@ -47,7 +47,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design.
    ```bash
    docker-compose up -d        # Start MySQL & Redis
    make migrate-up             # Setup database
-   go run cmd/bot/main.go      # Start bot
+   go run cmd/api/main.go      # Start bot
    ```
 
 ## Usage

@@ -16,6 +16,10 @@ import (
 
 	"github.com/ntttrang/python-genai-your-slack-assistant/internal/controller"
 	"github.com/ntttrang/python-genai-your-slack-assistant/internal/middleware"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/repository"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/service"
+	slackservice "github.com/ntttrang/python-genai-your-slack-assistant/internal/service/slack"
+	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/ai"
 	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/cache"
 	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/config"
 	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/database"
@@ -78,6 +82,35 @@ func main() {
 	// Initialize metrics
 	metricsManager := metrics.NewMetrics()
 
+	// Initialize AI provider (Gemini)
+	geminiProvider, err := ai.NewGeminiProvider(cfg.Gemini.APIKey, cfg.Gemini.Model)
+	if err != nil {
+		log.Error("Failed to initialize Gemini provider", zap.Error(err))
+		os.Exit(1)
+	}
+	defer geminiProvider.Close()
+	log.Info("Gemini provider initialized successfully")
+
+	// Initialize cache instance
+	cacheInstance, err := cache.NewRedisCache(cfg.Redis.Host, cfg.Redis.Port, cfg.Redis.Password)
+	if err != nil {
+		log.Error("Failed to initialize cache instance", zap.Error(err))
+		os.Exit(1)
+	}
+
+	// Initialize translation repository
+	translationRepo := repository.NewTranslationRepository(db)
+
+	// Initialize translation use case
+	cacheTTL := int64(cfg.Application.CacheTTLTranslation)
+	translationUseCase := service.NewTranslationUseCase(translationRepo, cacheInstance, geminiProvider, cacheTTL)
+
+	// Initialize Slack client
+	slackClient := slackservice.NewSlackClient(cfg.Slack.BotToken)
+
+	// Initialize event processor
+	eventProcessor := slackservice.NewEventProcessor(translationUseCase, slackClient, log)
+
 	// Initialize router
 	r := gin.Default()
 
@@ -93,9 +126,8 @@ func main() {
 	slackGroup := r.Group("/slack")
 	slackGroup.Use(middleware.VerifySlackSignatureGin(cfg.Slack.SigningSecret))
 	{
-		// TODO: Initialize EventProcessor and add the Slack webhook handler
-		// slackHandler := httpInterface.NewSlackWebhookHandler(eventProcessor, log)
-		// slackGroup.POST("/events", slackHandler.HandleSlackEventsGin)
+		slackHandler := controller.NewSlackWebhookHandler(eventProcessor, log)
+		slackGroup.POST("/events", slackHandler.HandleSlackEventsGin)
 	}
 
 	// Start HTTP server

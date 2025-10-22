@@ -56,6 +56,34 @@ Text: "%s"`, sourceLanguage, targetLanguage, text)
 	return string(textPart), nil
 }
 
+func (gp *GeminiProvider) DetectLanguage(text string) (string, error) {
+	ctx := context.Background()
+
+	prompt := fmt.Sprintf(`Detect the language of the following text and respond with only the language code (e.g., 'en', 'vi', 'es', etc.):
+
+Text: "%s"`, text)
+
+	model := gp.client.GenerativeModel(gp.model)
+	temp := float32(0.1)
+	model.Temperature = &temp
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", fmt.Errorf("failed to detect language: %w", err)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no response from Gemini")
+	}
+
+	textPart, ok := resp.Candidates[0].Content.Parts[0].(genai.Text)
+	if !ok {
+		return "", fmt.Errorf("unexpected response format from Gemini")
+	}
+
+	return string(textPart), nil
+}
+
 func (gp *GeminiProvider) Close() error {
 	return gp.client.Close()
 }

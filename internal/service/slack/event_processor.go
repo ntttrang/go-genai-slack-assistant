@@ -4,12 +4,15 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/request"
 	"github.com/ntttrang/python-genai-your-slack-assistant/internal/service"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/translator"
 )
 
 type EventProcessor struct {
 	translationUseCase *service.TranslationUseCase
 	slackClient        *SlackClient
+	translator         translator.Translator
 	logger             *zap.Logger
 }
 
@@ -21,6 +24,7 @@ func NewEventProcessor(
 	return &EventProcessor{
 		translationUseCase: translationUseCase,
 		slackClient:        slackClient,
+		translator:         translationUseCase.GetTranslator(), // Get translator from use case
 		logger:             logger,
 	}
 }
@@ -31,6 +35,9 @@ func (ep *EventProcessor) ProcessEvent(ctx context.Context, payload map[string]i
 		ep.logger.Error("Failed to get event type")
 		return
 	}
+
+	ep.logger.Info("Processing Slack event",
+		zap.String("event_type", eventType))
 
 	switch eventType {
 	case "event_callback":
@@ -64,6 +71,18 @@ func (ep *EventProcessor) handleEventCallback(ctx context.Context, payload map[s
 }
 
 func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[string]interface{}) {
+	// Skip messages with subtype (threaded replies, edits, etc.)
+	if subtype, ok := event["subtype"].(string); ok && subtype != "" {
+		ep.logger.Debug("Skipping message with subtype", zap.String("subtype", subtype))
+		return
+	}
+
+	// Skip bot messages
+	if _, ok := event["bot_id"].(string); ok {
+		ep.logger.Debug("Skipping bot message")
+		return
+	}
+
 	channelID, ok := event["channel"].(string)
 	if !ok {
 		ep.logger.Error("Failed to get channel ID")
@@ -86,15 +105,127 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 		ep.logger.Error("Failed to get message timestamp")
 		return
 	}
-	_ = ts
+
+	textPreview := text
+	if len(text) > 50 {
+		textPreview = text[:50]
+	}
 
 	ep.logger.Info("Processing message event",
 		zap.String("channel_id", channelID),
 		zap.String("user_id", userID),
-		zap.String("text", text[:min(len(text), 50)]))
+		zap.String("text", textPreview),
+		zap.String("timestamp", ts))
 
-	// Store message context for later processing
-	// TODO: Implement auto-translation based on channel config
+	// Detect message language
+	detectedLang, err := ep.detectLanguage(ctx, text)
+	if err != nil {
+		ep.logger.Error("Failed to detect message language",
+			zap.Error(err),
+			zap.String("text", text))
+		return
+	}
+
+	ep.logger.Info("Language detected",
+		zap.String("detected_language", detectedLang),
+		zap.String("text", text[:min(len(text), 30)]))
+
+	// Determine target language based on detected source language
+	targetLang := "Vietnamese"
+	if detectedLang == "Vietnamese" {
+		targetLang = "English"
+	} else if detectedLang != "English" {
+		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
+			zap.String("detected_language", detectedLang))
+		
+		// Post error message to thread
+		errorMsg := "Sorry, I can't support this language. I only translate English and Vietnamese."
+		_, _, err := ep.slackClient.PostMessage(channelID, errorMsg, ts)
+		if err != nil {
+			ep.logger.Error("Failed to post error message",
+				zap.Error(err),
+				zap.String("channel_id", channelID))
+		}
+		return
+	}
+
+	// Add eye emoji reaction to the message
+	if err := ep.slackClient.AddReaction("eyes", channelID, ts); err != nil {
+		ep.logger.Warn("Failed to add emoji reaction to message",
+			zap.Error(err),
+			zap.String("channel_id", channelID),
+			zap.String("timestamp", ts),
+			zap.String("emoji", "eyes"),
+			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
+	}
+
+	translationReq := request.Translation{
+		Text:           text,
+		SourceLanguage: detectedLang,
+		TargetLanguage: targetLang,
+	}
+
+	result, err := ep.translationUseCase.Translate(translationReq)
+	if err != nil {
+		ep.logger.Error("Failed to translate message",
+			zap.Error(err),
+			zap.String("text", text))
+		return
+	}
+
+	ep.logger.Info("Translation completed",
+		zap.String("original", text),
+		zap.String("translated", result.TranslatedText),
+		zap.String("source_lang", result.SourceLanguage),
+		zap.String("target_lang", result.TargetLanguage))
+
+	// Post translated message as a thread reply
+	_, _, err = ep.slackClient.PostMessage(channelID, result.TranslatedText, ts)
+	if err != nil {
+		ep.logger.Error("Failed to post translated message",
+			zap.Error(err),
+			zap.String("channel_id", channelID))
+		return
+	}
+
+	ep.logger.Info("Translation posted successfully",
+		zap.String("channel_id", channelID),
+		zap.String("original", text[:min(len(text), 30)]),
+		zap.String("translated", result.TranslatedText[:min(len(result.TranslatedText), 30)]))
+}
+
+func (ep *EventProcessor) detectLanguage(ctx context.Context, text string) (string, error) {
+	// Try to detect language from the translator (AI provider)
+	langCode, err := ep.translator.DetectLanguage(text)
+	if err != nil {
+		ep.logger.Error("Failed to detect language from translator", zap.Error(err))
+		return "", err
+	}
+
+	// Normalize language code to full name
+	language := normalizeLanguageCode(langCode)
+	ep.logger.Debug("Language detection result",
+		zap.String("detected_code", langCode),
+		zap.String("normalized_language", language))
+
+	return language, nil
+}
+
+func normalizeLanguageCode(code string) string {
+	// Normalize common language codes to full names
+	switch code {
+	case "en", "EN", "english", "eng":
+		return "English"
+	case "vi", "VI", "vietnamese", "vie":
+		return "Vietnamese"
+	default:
+		// If not a known code, return as-is (could be full language name already)
+		if code == "English" || code == "Vietnamese" {
+			return code
+		}
+		// Default to English if unknown
+		return code
+	}
 }
 
 func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[string]interface{}) {
@@ -132,7 +263,89 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		zap.String("reaction", reaction),
 		zap.String("message_ts", messageTS))
 
-	// TODO: Trigger translation for the message
+	// Fetch the original message
+	message, err := ep.slackClient.GetMessage(channelID, messageTS)
+	if err != nil {
+		ep.logger.Error("Failed to fetch message",
+			zap.Error(err),
+			zap.String("channel_id", channelID),
+			zap.String("message_ts", messageTS))
+		return
+	}
+
+	if message == nil || message.Text == "" {
+		ep.logger.Warn("Message not found or empty",
+			zap.String("channel_id", channelID),
+			zap.String("message_ts", messageTS))
+		return
+	}
+
+	// Detect language from the message
+	detectedLang, err := ep.detectLanguage(ctx, message.Text)
+	if err != nil {
+		ep.logger.Error("Failed to detect message language",
+			zap.Error(err),
+			zap.String("text", message.Text))
+		return
+	}
+
+	// Determine target language based on detected source language
+	targetLang := "Vietnamese"
+	if detectedLang == "Vietnamese" {
+		targetLang = "English"
+	} else if detectedLang != "English" {
+		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
+			zap.String("detected_language", detectedLang))
+		
+		// Post error message to thread
+		errorMsg := "Sorry, I can't support this language. I only translate English and Vietnamese."
+		_, _, err := ep.slackClient.PostMessage(channelID, errorMsg, messageTS)
+		if err != nil {
+			ep.logger.Error("Failed to post error message",
+				zap.Error(err),
+				zap.String("channel_id", channelID))
+		}
+		return
+	}
+
+	// Add eye emoji reaction to the message
+	if err := ep.slackClient.AddReaction("eyes", channelID, messageTS); err != nil {
+		ep.logger.Warn("Failed to add emoji reaction to message",
+			zap.Error(err),
+			zap.String("channel_id", channelID),
+			zap.String("timestamp", messageTS),
+			zap.String("emoji", "eyes"),
+			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
+	}
+
+	// Translate the message
+	translationReq := request.Translation{
+		Text:           message.Text,
+		SourceLanguage: detectedLang,
+		TargetLanguage: targetLang,
+	}
+
+	result, err := ep.translationUseCase.Translate(translationReq)
+	if err != nil {
+		ep.logger.Error("Failed to translate message from reaction",
+			zap.Error(err),
+			zap.String("text", message.Text))
+		return
+	}
+
+	// Post translated message as a thread reply
+	_, _, err = ep.slackClient.PostMessage(channelID, result.TranslatedText, messageTS)
+	if err != nil {
+		ep.logger.Error("Failed to post translated message from reaction",
+			zap.Error(err),
+			zap.String("channel_id", channelID))
+		return
+	}
+
+	ep.logger.Info("Translation from reaction posted successfully",
+		zap.String("channel_id", channelID),
+		zap.String("original", message.Text[:min(len(message.Text), 30)]),
+		zap.String("translated", result.TranslatedText[:min(len(result.TranslatedText), 30)]))
 }
 
 func min(a, b int) int {

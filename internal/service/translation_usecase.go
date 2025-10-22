@@ -103,3 +103,7 @@ func (tu *TranslationUseCase) generateHash(text, sourceLang, targetLang string) 
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
+
+func (tu *TranslationUseCase) GetTranslator() translator.Translator {
+	return tu.translator
+}

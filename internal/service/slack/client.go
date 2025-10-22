@@ -17,6 +17,8 @@ func NewSlackClient(token string) *SlackClient {
 func (sc *SlackClient) GetMessage(channelID, timestamp string) (*slack.Message, error) {
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: channelID,
+		Latest:    timestamp,
+		Inclusive: true,
 		Limit:     1,
 	}
 
@@ -26,6 +28,11 @@ func (sc *SlackClient) GetMessage(channelID, timestamp string) (*slack.Message, 
 	}
 
 	if len(history.Messages) == 0 {
+		return nil, nil
+	}
+
+	// Verify we got the right message by timestamp
+	if history.Messages[0].Timestamp != timestamp {
 		return nil, nil
 	}
 
@@ -47,4 +54,11 @@ func (sc *SlackClient) PostMessage(channelID, text string, threadTS string) (str
 
 func (sc *SlackClient) GetUserInfo(userID string) (*slack.User, error) {
 	return sc.client.GetUserInfo(userID)
+}
+
+func (sc *SlackClient) AddReaction(emoji, channelID, timestamp string) error {
+	return sc.client.AddReaction(emoji, slack.ItemRef{
+		Channel:   channelID,
+		Timestamp: timestamp,
+	})
 }
