@@ -34,8 +34,10 @@ func (gp *GeminiProvider) Translate(text, sourceLanguage, targetLanguage string)
 Text: "%s"`, sourceLanguage, targetLanguage, text)
 
 	model := gp.client.GenerativeModel(gp.model)
-	model.Temperature = 0.1
-	model.TopP = 0.9
+	temp := float32(0.1)
+	model.Temperature = &temp
+	topP := float32(0.9)
+	model.TopP = &topP
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {

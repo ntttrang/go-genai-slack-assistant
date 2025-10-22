@@ -22,13 +22,9 @@ func NewLanguageDetector() (*LanguageDetector, error) {
 		lingua.Korean,
 	}
 
-	detector, err := lingua.NewLanguageDetectorBuilder().
+	detector := lingua.NewLanguageDetectorBuilder().
 		FromLanguages(languages...).
 		Build()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create language detector: %w", err)
-	}
 
 	return &LanguageDetector{detector: detector}, nil
 }

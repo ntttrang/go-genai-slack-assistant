@@ -2,11 +2,8 @@ package slack
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"go.uber.org/zap"
-	"github.com/ntttrang/python-genai-your-slack-assistant/domain"
 	"github.com/ntttrang/python-genai-your-slack-assistant/usecase"
 )
 
@@ -84,11 +81,12 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 		return
 	}
 
-	timestamp, ok := event["ts"].(string)
-	if !ok {
+	ts, tsOk := event["ts"].(string)
+	if !tsOk {
 		ep.logger.Error("Failed to get message timestamp")
 		return
 	}
+	_ = ts
 
 	ep.logger.Info("Processing message event",
 		zap.String("channel_id", channelID),
