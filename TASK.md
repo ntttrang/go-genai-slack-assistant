@@ -119,7 +119,7 @@ Based on the architecture document, this task list outlines the MVP implementati
 
 ### Testing & Quality Assurance
 
-- [ ] **18. Integration tests**
+- [x] **18. Integration tests**
   - Test database operations with test MySQL instance
   - Test Redis caching behavior
   - Test Gemini API calls with test API key
@@ -127,13 +127,13 @@ Based on the architecture document, this task list outlines the MVP implementati
 
 ### Operations
 
-- [ ] **19. Health check endpoint**
+- [x] **19. Health check endpoint**
   - Add /health endpoint for monitoring
   - Check database connectivity
   - Check Redis connectivity
   - Return status JSON
 
-- [ ] **20. Monitoring & metrics**
+- [x] **20. Monitoring & metrics**
   - Track translation requests per channel/user
   - Track API latency and success rate
   - Track cache hit rate
