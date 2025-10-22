@@ -10,10 +10,9 @@ To fix this, go to your Slack App settings (https://api.slack.com/apps) and add 
 4. **`groups:history`** - Read messages in private channels (if needed)
 5. **`groups:read`** - View basic information about private channels (if needed)
 6. **`im:history`** - Read messages in direct messages (if needed)
-7. **`reactions:read`** - View emoji reactions (for 🇻🇳 trigger)
-8. **`users:read`** - View people in a workspace
-9. **`reactions:write`** - Required to add emoji reactions
-10. **`reactions:read`** - Optional, to read reaction data
+7. **`users:read`** - View people in a workspace
+8. **`reactions:write`** - Required to add emoji reactions
+9. **`reactions:read`** - Optional, to read reaction data
 
 ### Steps to Add Scopes:
 

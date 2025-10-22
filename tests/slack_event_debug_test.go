@@ -1,0 +1,125 @@
+package tests
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/service"
+)
+
+// TestTranslationFlowEnglishToVietnamese tests the full translation scenario
+func TestTranslationFlowEnglishToVietnamese(t *testing.T) {
+	// Setup mocks
+	mockTranslator := new(MockTranslator)
+	mockRepo := new(MockTranslationRepository)
+	mockCache := new(MockRedisCache)
+
+	englishMessage := "Hello, How are you?"
+	vietnameseTranslation := "Xin chào bạn khỏe không?"
+
+	// Mock language detection
+	mockTranslator.On("DetectLanguage", englishMessage).Return("en", nil)
+
+	// Mock translation
+	mockTranslator.On("Translate", englishMessage, "English", "Vietnamese").
+		Return(vietnameseTranslation, nil)
+
+	// Mock cache miss
+	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
+
+	// Mock database miss
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+
+	// Mock save
+	mockRepo.On("Save", mock.Anything).Return(nil)
+
+	// Mock cache set
+	mockCache.On("Set", mock.Anything, vietnameseTranslation, int64(86400)).Return(nil)
+
+	// Create translation use case
+	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+
+	// Test: Translate English message
+	translator := tu.GetTranslator()
+	detectedLang, err := translator.DetectLanguage(englishMessage)
+	assert.NoError(t, err)
+	assert.Equal(t, "en", detectedLang)
+
+	// Translate
+	result, err := tu.Translate(struct {
+		Text           string
+		SourceLanguage string
+		TargetLanguage string
+	}{
+		Text:           englishMessage,
+		SourceLanguage: "English",
+		TargetLanguage: "Vietnamese",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, vietnameseTranslation, result.TranslatedText)
+
+	t.Logf("✓ Full English→Vietnamese flow works!")
+	t.Logf("  Input: %s", englishMessage)
+	t.Logf("  Output: %s", vietnameseTranslation)
+}
+
+// TestTranslationFlowVietnameseToEnglish tests Vietnamese to English scenario
+func TestTranslationFlowVietnameseToEnglish(t *testing.T) {
+	// Setup mocks
+	mockTranslator := new(MockTranslator)
+	mockRepo := new(MockTranslationRepository)
+	mockCache := new(MockRedisCache)
+
+	vietnameseMessage := "Xin chào bạn khỏe không?"
+	englishTranslation := "Hello, how are you?"
+
+	// Mock language detection
+	mockTranslator.On("DetectLanguage", vietnameseMessage).Return("vi", nil)
+
+	// Mock translation
+	mockTranslator.On("Translate", vietnameseMessage, "Vietnamese", "English").
+		Return(englishTranslation, nil)
+
+	// Mock cache miss
+	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
+
+	// Mock database miss
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+
+	// Mock save
+	mockRepo.On("Save", mock.Anything).Return(nil)
+
+	// Mock cache set
+	mockCache.On("Set", mock.Anything, englishTranslation, int64(86400)).Return(nil)
+
+	// Create translation use case
+	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+
+	// Test: Translate Vietnamese message
+	translator := tu.GetTranslator()
+	detectedLang, err := translator.DetectLanguage(vietnameseMessage)
+	assert.NoError(t, err)
+	assert.Equal(t, "vi", detectedLang)
+
+	// Translate
+	result, err := tu.Translate(struct {
+		Text           string
+		SourceLanguage string
+		TargetLanguage string
+	}{
+		Text:           vietnameseMessage,
+		SourceLanguage: "Vietnamese",
+		TargetLanguage: "English",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, englishTranslation, result.TranslatedText)
+
+	t.Logf("✓ Full Vietnamese→English flow works!")
+	t.Logf("  Input: %s", vietnameseMessage)
+	t.Logf("  Output: %s", englishTranslation)
+}

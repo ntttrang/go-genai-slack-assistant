@@ -22,7 +22,7 @@ A Slack bot that translates English messages to Vietnamese using Clean Architect
 
 ### 3. Response Format
 - **Thread Replies**: Post translations as threaded replies
-- **Format**: `🇻🇳 {translated_text}`
+- **Format**: `🇻🇳 {translated_text}` (Vietnamese) or `🇬🇧 {translated_text}` (English)
 - **Non-intrusive**: Keeps main channel clean
 
 ### 4. Data Storage

@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/request"
@@ -179,8 +180,13 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 		zap.String("source_lang", result.SourceLanguage),
 		zap.String("target_lang", result.TargetLanguage))
 
-	// Post translated message as a thread reply
-	_, _, err = ep.slackClient.PostMessage(channelID, result.TranslatedText, ts)
+	// Post translated message as a thread reply with emoji flag
+	emoji := "🇻🇳"
+	if result.TargetLanguage == "English" {
+		emoji = "🇬🇧"
+	}
+	responseText := fmt.Sprintf("%s %s", emoji, result.TranslatedText)
+	_, _, err = ep.slackClient.PostMessage(channelID, responseText, ts)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message",
 			zap.Error(err),
@@ -333,8 +339,13 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		return
 	}
 
-	// Post translated message as a thread reply
-	_, _, err = ep.slackClient.PostMessage(channelID, result.TranslatedText, messageTS)
+	// Post translated message as a thread reply with emoji flag
+	emoji := "🇻🇳"
+	if result.TargetLanguage == "English" {
+		emoji = "🇬🇧"
+	}
+	responseText := fmt.Sprintf("%s %s", emoji, result.TranslatedText)
+	_, _, err = ep.slackClient.PostMessage(channelID, responseText, messageTS)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message from reaction",
 			zap.Error(err),
