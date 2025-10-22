@@ -77,38 +77,38 @@ Based on the architecture document, this task list outlines the MVP implementati
 
 ### Configuration & Management
 
-- [ ] **12. Channel configuration**
+- [x] **12. Channel configuration**
   - Create use case for managing channel settings
   - Implement CRUD operations for channel_configs table
   - Add auto_translate, languages, and enabled flags
 
 ### Security & Validation
 
-- [ ] **13. Basic error handling**
+- [x] **13. Basic error handling**
   - Add structured logging with zap
   - Implement error response formatting
   - Add correlation IDs for request tracking
 
-- [ ] **14. Rate limiting**
+- [x] **14. Rate limiting**
   - Implement per-user rate limit (10 translations/min)
   - Implement per-channel rate limit (30 translations/min)
   - Return appropriate error messages when limits exceeded
 
-- [ ] **15. Input validation**
+- [x] **15. Input validation**
   - Add message sanitization to prevent prompt injection
   - Implement length limits (10KB max)
   - Validate Slack event payloads
 
 ### Deployment
 
-- [ ] **16. Docker containerization**
+- [x] **16. Docker containerization**
   - Create Dockerfile for Go application
   - Create docker-compose.yml with MySQL and Redis services
   - Configure environment variable mapping
 
 ### Testing
 
-- [ ] **17. Unit tests**
+- [x] **17. Unit tests**
   - Write tests for domain entities and services
   - Write tests for use cases with mocks
   - Target 80%+ code coverage
