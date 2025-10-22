@@ -5,11 +5,16 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/zap"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/infrastructure/language"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/request"
 	svc "github.com/ntttrang/python-genai-your-slack-assistant/internal/service"
+	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/language"
+	"go.uber.org/zap"
 )
+
+type Translator interface {
+	Translate(text, sourceLanguage, targetLanguage string) (string, error)
+	DetectLanguage(text string) (string, error)
+}
 
 type TranslationHandler struct {
 	translationUseCase *svc.TranslationUseCase
@@ -64,7 +69,7 @@ func (th *TranslationHandler) TranslateAndPostReply(
 	}
 
 	// Translate
-	req := model.TranslationRequest{
+	req := request.Translation{
 		Text:           messageText,
 		SourceLanguage: detectedLang,
 		TargetLanguage: th.getLanguageName(targetLanguage),

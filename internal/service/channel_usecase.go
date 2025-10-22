@@ -4,16 +4,17 @@ import (
 	"fmt"
 
 	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/repository"
 )
 
 type ChannelUseCase struct {
-	repo model.ChannelRepository
+	repo  repository.ChannelRepository
 	cache model.Cache
 }
 
-func NewChannelUseCase(repo model.ChannelRepository, cache model.Cache) *ChannelUseCase {
+func NewChannelUseCase(repo repository.ChannelRepository, cache model.Cache) *ChannelUseCase {
 	return &ChannelUseCase{
-		repo: repo,
+		repo:  repo,
 		cache: cache,
 	}
 }

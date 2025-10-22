@@ -8,8 +8,3 @@ type Message struct {
 	Timestamp string
 	ThreadTs  string
 }
-
-type MessageRepository interface {
-	Save(msg *Message) error
-	GetByID(id string) (*Message, error)
-}

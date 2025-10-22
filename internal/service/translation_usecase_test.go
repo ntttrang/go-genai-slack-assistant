@@ -4,9 +4,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/request"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
 )
 
 type MockTranslationRepository struct {
@@ -89,7 +90,7 @@ func TestTranslate_CacheHit(t *testing.T) {
 
 	tu := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
 
-	req := model.TranslationRequest{
+	req := request.Translation{
 		Text:           "Hello",
 		SourceLanguage: "en",
 		TargetLanguage: "vi",
@@ -116,7 +117,7 @@ func TestTranslate_DatabaseHit(t *testing.T) {
 
 	tu := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
 
-	req := model.TranslationRequest{
+	req := request.Translation{
 		Text:           "Hello",
 		SourceLanguage: "en",
 		TargetLanguage: "vi",
@@ -142,7 +143,7 @@ func TestTranslate_AITranslation(t *testing.T) {
 
 	tu := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
 
-	req := model.TranslationRequest{
+	req := request.Translation{
 		Text:           "Hello",
 		SourceLanguage: "en",
 		TargetLanguage: "vi",
@@ -168,7 +169,7 @@ func TestTranslate_AIError(t *testing.T) {
 
 	tu := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
 
-	req := model.TranslationRequest{
+	req := request.Translation{
 		Text:           "Hello",
 		SourceLanguage: "en",
 		TargetLanguage: "vi",

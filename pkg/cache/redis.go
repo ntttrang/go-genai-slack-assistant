@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
+	"github.com/redis/go-redis/v9"
 )
 
 type RedisCache struct {

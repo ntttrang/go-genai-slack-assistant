@@ -6,20 +6,24 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/request"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/response"
 	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/repository"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/translator"
 )
 
 type TranslationUseCase struct {
-	repo       model.TranslationRepository
+	repo       repository.TranslationRepository
 	cache      model.Cache
-	translator model.Translator
+	translator translator.Translator
 	cacheTTL   int64
 }
 
 func NewTranslationUseCase(
-	repo model.TranslationRepository,
+	repo repository.TranslationRepository,
 	cache model.Cache,
-	translator model.Translator,
+	translator translator.Translator,
 	cacheTTL int64,
 ) *TranslationUseCase {
 	return &TranslationUseCase{
@@ -30,14 +34,14 @@ func NewTranslationUseCase(
 	}
 }
 
-func (tu *TranslationUseCase) Translate(req model.TranslationRequest) (model.TranslationResponse, error) {
+func (tu *TranslationUseCase) Translate(req request.Translation) (response.Translation, error) {
 	hash := tu.generateHash(req.Text, req.SourceLanguage, req.TargetLanguage)
 	cacheKey := fmt.Sprintf("translation:%s", hash)
 
 	// Try to get from cache
 	cachedResult, err := tu.cache.Get(cacheKey)
 	if err == nil && cachedResult != "" {
-		return model.TranslationResponse{
+		return response.Translation{
 			OriginalText:   req.Text,
 			TranslatedText: cachedResult,
 			SourceLanguage: req.SourceLanguage,
@@ -49,7 +53,7 @@ func (tu *TranslationUseCase) Translate(req model.TranslationRequest) (model.Tra
 	existingTranslation, err := tu.repo.GetByHash(hash)
 	if err == nil && existingTranslation != nil {
 		tu.cache.Set(cacheKey, existingTranslation.TranslatedText, tu.cacheTTL)
-		return model.TranslationResponse{
+		return response.Translation{
 			OriginalText:   req.Text,
 			TranslatedText: existingTranslation.TranslatedText,
 			SourceLanguage: req.SourceLanguage,
@@ -60,7 +64,7 @@ func (tu *TranslationUseCase) Translate(req model.TranslationRequest) (model.Tra
 	// Call AI to translate
 	translatedText, err := tu.translator.Translate(req.Text, req.SourceLanguage, req.TargetLanguage)
 	if err != nil {
-		return model.TranslationResponse{}, fmt.Errorf("translation failed: %w", err)
+		return response.Translation{}, fmt.Errorf("translation failed: %w", err)
 	}
 
 	// Store in database
@@ -76,13 +80,13 @@ func (tu *TranslationUseCase) Translate(req model.TranslationRequest) (model.Tra
 	}
 
 	if err := tu.repo.Save(translation); err != nil {
-		return model.TranslationResponse{}, fmt.Errorf("failed to save translation: %w", err)
+		return response.Translation{}, fmt.Errorf("failed to save translation: %w", err)
 	}
 
 	// Store in cache
 	tu.cache.Set(cacheKey, translatedText, tu.cacheTTL)
 
-	return model.TranslationResponse{
+	return response.Translation{
 		OriginalText:   req.Text,
 		TranslatedText: translatedText,
 		SourceLanguage: req.SourceLanguage,

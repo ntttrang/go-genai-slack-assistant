@@ -15,10 +15,3 @@ type Translation struct {
 	CreatedAt       time.Time
 	TTL             int64
 }
-
-type TranslationRepository interface {
-	Save(translation *Translation) error
-	GetByHash(hash string) (*Translation, error)
-	GetByID(id string) (*Translation, error)
-	GetByChannelID(channelID string, limit int) ([]*Translation, error)
-}

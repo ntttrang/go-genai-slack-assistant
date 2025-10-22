@@ -1,4 +1,4 @@
-package ratelimit
+package tests
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/ratelimit"
 )
 
 func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {
@@ -22,13 +23,13 @@ func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {
 	ctx := context.Background()
 	client.FlushDB(ctx)
 
-	limiter := NewRedisRateLimiter(client)
+	limiter := ratelimit.NewRedisRateLimiter(client)
 
 	allowed, remaining, _, err := limiter.CheckUserLimit("user123")
 
 	assert.NoError(t, err)
 	assert.True(t, allowed)
-	assert.Equal(t, UserRateLimit, remaining)
+	assert.Equal(t, ratelimit.UserRateLimit, remaining)
 }
 
 func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
@@ -41,7 +42,7 @@ func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
 	ctx := context.Background()
 	client.FlushDB(ctx)
 
-	limiter := NewRedisRateLimiter(client)
+	limiter := ratelimit.NewRedisRateLimiter(client)
 
 	err := limiter.IncrementUserLimit("user123")
 	assert.NoError(t, err)
@@ -49,7 +50,7 @@ func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
 	allowed, remaining, _, err := limiter.CheckUserLimit("user123")
 	assert.NoError(t, err)
 	assert.True(t, allowed)
-	assert.Equal(t, UserRateLimit-1, remaining)
+	assert.Equal(t, ratelimit.UserRateLimit-1, remaining)
 }
 
 func TestRedisRateLimiter_CheckChannelLimit_FirstRequest(t *testing.T) {
@@ -62,13 +63,13 @@ func TestRedisRateLimiter_CheckChannelLimit_FirstRequest(t *testing.T) {
 	ctx := context.Background()
 	client.FlushDB(ctx)
 
-	limiter := NewRedisRateLimiter(client)
+	limiter := ratelimit.NewRedisRateLimiter(client)
 
 	allowed, remaining, _, err := limiter.CheckChannelLimit("channel123")
 
 	assert.NoError(t, err)
 	assert.True(t, allowed)
-	assert.Equal(t, ChannelRateLimit, remaining)
+	assert.Equal(t, ratelimit.ChannelRateLimit, remaining)
 }
 
 func TestRedisRateLimiter_RateLimitExceeded(t *testing.T) {
@@ -81,10 +82,10 @@ func TestRedisRateLimiter_RateLimitExceeded(t *testing.T) {
 	ctx := context.Background()
 	client.FlushDB(ctx)
 
-	limiter := NewRedisRateLimiter(client)
+	limiter := ratelimit.NewRedisRateLimiter(client)
 
 	// Increment to limit
-	for i := 0; i < UserRateLimit; i++ {
+	for i := 0; i < ratelimit.UserRateLimit; i++ {
 		err := limiter.IncrementUserLimit("user123")
 		require.NoError(t, err)
 	}
@@ -107,7 +108,7 @@ func TestRedisRateLimiter_TTLExpiration(t *testing.T) {
 	ctx := context.Background()
 	client.FlushDB(ctx)
 
-	limiter := NewRedisRateLimiter(client)
+	limiter := ratelimit.NewRedisRateLimiter(client)
 
 	// Set a very short TTL for testing
 	key := "rate_limit:user:testuser"

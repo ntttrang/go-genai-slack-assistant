@@ -1,4 +1,4 @@
-package database
+package repository
 
 import (
 	"database/sql"
@@ -7,15 +7,23 @@ import (
 	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
 )
 
-type ChannelRepository struct {
+type ChannelRepository interface {
+	Save(config *model.ChannelConfig) error
+	GetByChannelID(channelID string) (*model.ChannelConfig, error)
+	Update(config *model.ChannelConfig) error
+	Delete(channelID string) error
+	GetAll() ([]*model.ChannelConfig, error)
+}
+
+type ChannelRepositoryImpl struct {
 	db *sql.DB
 }
 
-func NewChannelRepository(db *sql.DB) *ChannelRepository {
-	return &ChannelRepository{db: db}
+func NewChannelRepository(db *sql.DB) ChannelRepository {
+	return &ChannelRepositoryImpl{db: db}
 }
 
-func (cr *ChannelRepository) Save(config *model.ChannelConfig) error {
+func (cr *ChannelRepositoryImpl) Save(config *model.ChannelConfig) error {
 	languages := ""
 	for i, lang := range config.SourceLanguages {
 		if i > 0 {
@@ -43,7 +51,7 @@ func (cr *ChannelRepository) Save(config *model.ChannelConfig) error {
 	return nil
 }
 
-func (cr *ChannelRepository) GetByChannelID(channelID string) (*model.ChannelConfig, error) {
+func (cr *ChannelRepositoryImpl) GetByChannelID(channelID string) (*model.ChannelConfig, error) {
 	query := `
 		SELECT id, channel_id, auto_translate, source_languages, target_language, enabled, created_at, updated_at
 		FROM channel_configs
@@ -79,7 +87,7 @@ func (cr *ChannelRepository) GetByChannelID(channelID string) (*model.ChannelCon
 	return config, nil
 }
 
-func (cr *ChannelRepository) Update(config *model.ChannelConfig) error {
+func (cr *ChannelRepositoryImpl) Update(config *model.ChannelConfig) error {
 	languages := ""
 	for i, lang := range config.SourceLanguages {
 		if i > 0 {
@@ -111,7 +119,7 @@ func (cr *ChannelRepository) Update(config *model.ChannelConfig) error {
 	return nil
 }
 
-func (cr *ChannelRepository) Delete(channelID string) error {
+func (cr *ChannelRepositoryImpl) Delete(channelID string) error {
 	query := `DELETE FROM channel_configs WHERE channel_id = ?`
 
 	result, err := cr.db.Exec(query, channelID)
@@ -131,7 +139,7 @@ func (cr *ChannelRepository) Delete(channelID string) error {
 	return nil
 }
 
-func (cr *ChannelRepository) GetAll() ([]*model.ChannelConfig, error) {
+func (cr *ChannelRepositoryImpl) GetAll() ([]*model.ChannelConfig, error) {
 	query := `
 		SELECT id, channel_id, auto_translate, source_languages, target_language, enabled, created_at, updated_at
 		FROM channel_configs

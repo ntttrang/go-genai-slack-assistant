@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -15,10 +14,12 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/infrastructure/cache"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/infrastructure/database"
-	ctrlr "github.com/ntttrang/python-genai-your-slack-assistant/internal/controller"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/infrastructure/metrics"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/controller"
+	"github.com/ntttrang/python-genai-your-slack-assistant/internal/middleware"
+	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/cache"
+	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/config"
+	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/database"
+	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/metrics"
 )
 
 func main() {
@@ -31,26 +32,23 @@ func main() {
 
 	log.Info("Starting Slack Translation Bot...")
 
-	// Load environment variables
-	serverPort := getEnv("SERVER_PORT", "8080")
-	serverAddr := getEnv("SERVER_ADDRESS", "0.0.0.0")
-	mysqlHost := getEnv("MYSQL_HOST", "localhost")
-	mysqlPort := getEnvInt("MYSQL_PORT", 3306)
-	mysqlUser := getEnv("MYSQL_USER", "root")
-	mysqlPassword := getEnv("MYSQL_PASSWORD", "")
-	mysqlDatabase := getEnv("MYSQL_DATABASE", "translation_bot")
-	redisHost := getEnv("REDIS_HOST", "localhost")
-	redisPort := getEnvInt("REDIS_PORT", 6379)
-	redisPassword := getEnv("REDIS_PASSWORD", "")
-	slackSigningSecret := getEnv("SLACK_SIGNING_SECRET", "")
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		log.Error("Failed to load configuration", zap.Error(err))
+		os.Exit(1)
+	}
+	log.Info("Configuration loaded successfully",
+		zap.String("environment", cfg.Application.Environment),
+		zap.String("server_address", fmt.Sprintf("%s:%s", cfg.Server.Address, cfg.Server.Port)))
 
 	// Initialize database
 	dbConfig := database.DBConfig{
-		Host:     mysqlHost,
-		Port:     mysqlPort,
-		User:     mysqlUser,
-		Password: mysqlPassword,
-		Database: mysqlDatabase,
+		Host:     cfg.Database.Host,
+		Port:     cfg.Database.Port,
+		User:     cfg.Database.User,
+		Password: cfg.Database.Password,
+		Database: cfg.Database.Database,
 	}
 
 	db, err := database.NewDB(dbConfig)
@@ -62,7 +60,7 @@ func main() {
 	log.Info("Database connected successfully")
 
 	// Initialize cache (which also connects to Redis)
-	_, err = cache.NewRedisCache(redisHost, redisPort, redisPassword)
+	_, err = cache.NewRedisCache(cfg.Redis.Host, cfg.Redis.Port, cfg.Redis.Password)
 	if err != nil {
 		log.Error("Failed to initialize cache", zap.Error(err))
 		os.Exit(1)
@@ -71,8 +69,8 @@ func main() {
 
 	// Create redis client for health checks
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", redisHost, redisPort),
-		Password: redisPassword,
+		Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
+		Password: cfg.Redis.Password,
 		DB:       0,
 	})
 	defer redisClient.Close()
@@ -84,16 +82,16 @@ func main() {
 	r := gin.Default()
 
 	// Health check endpoint
-	healthHandler := ctrlr.NewHealthCheckHandler(db, redisClient, log)
+	healthHandler := controller.NewHealthCheckHandler(db, redisClient, log)
 	r.GET("/health", healthHandler.HandleHealthGin)
 
 	// Metrics endpoint
-	metricsHandler := ctrlr.NewMetricsHandler(metricsManager, log)
+	metricsHandler := controller.NewMetricsHandler(metricsManager, log)
 	r.GET("/metrics", metricsHandler.HandleMetricsGin)
 
 	// Slack webhook with signature verification
 	slackGroup := r.Group("/slack")
-	slackGroup.Use(ctrlr.VerifySlackSignatureGin(slackSigningSecret))
+	slackGroup.Use(middleware.VerifySlackSignatureGin(cfg.Slack.SigningSecret))
 	{
 		// TODO: Initialize EventProcessor and add the Slack webhook handler
 		// slackHandler := httpInterface.NewSlackWebhookHandler(eventProcessor, log)
@@ -101,7 +99,7 @@ func main() {
 	}
 
 	// Start HTTP server
-	address := net.JoinHostPort(serverAddr, serverPort)
+	address := net.JoinHostPort(cfg.Server.Address, cfg.Server.Port)
 	server := &http.Server{
 		Addr:         address,
 		Handler:      r,
@@ -140,20 +138,4 @@ func main() {
 	}
 
 	log.Info("Server stopped")
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvInt(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		if intVal, err := strconv.Atoi(value); err == nil {
-			return intVal
-		}
-	}
-	return defaultValue
 }
