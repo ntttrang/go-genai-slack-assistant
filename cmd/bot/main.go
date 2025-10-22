@@ -11,8 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -82,31 +81,24 @@ func main() {
 	metricsManager := metrics.NewMetrics()
 
 	// Initialize router
-	r := chi.NewRouter()
-
-	// Add middleware
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RequestID)
+	r := gin.Default()
 
 	// Health check endpoint
 	healthHandler := httpInterface.NewHealthCheckHandler(db, redisClient, log)
-	r.Get("/health", healthHandler.HandleHealth)
+	r.GET("/health", healthHandler.HandleHealthGin)
 
 	// Metrics endpoint
 	metricsHandler := httpInterface.NewMetricsHandler(metricsManager, log)
-	r.Get("/metrics", metricsHandler.HandleMetrics)
+	r.GET("/metrics", metricsHandler.HandleMetricsGin)
 
 	// Slack webhook with signature verification
-	r.Route("/slack", func(r chi.Router) {
-		r.Use(func(next http.Handler) http.Handler {
-			return httpInterface.VerifySlackSignature(slackSigningSecret)(next)
-		})
-
+	slackGroup := r.Group("/slack")
+	slackGroup.Use(httpInterface.VerifySlackSignatureGin(slackSigningSecret))
+	{
 		// TODO: Initialize EventProcessor and add the Slack webhook handler
 		// slackHandler := httpInterface.NewSlackWebhookHandler(eventProcessor, log)
-		// r.Post("/events", slackHandler.HandleSlackEvents)
-	})
+		// slackGroup.POST("/events", slackHandler.HandleSlackEventsGin)
+	}
 
 	// Start HTTP server
 	address := net.JoinHostPort(serverAddr, serverPort)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -99,4 +100,40 @@ func (h *HealthCheckHandler) checkRedis(ctx context.Context) CheckStatus {
 	}
 
 	return CheckStatus{Status: "ok"}
+}
+
+// HandleHealthGin handles health check requests with Gin framework
+func (h *HealthCheckHandler) HandleHealthGin(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	checks := make(map[string]CheckStatus)
+
+	// Check database
+	dbStatus := h.checkDatabase(ctx)
+	checks["database"] = dbStatus
+
+	// Check Redis
+	redisStatus := h.checkRedis(ctx)
+	checks["redis"] = redisStatus
+
+	// Determine overall status
+	overallStatus := "ok"
+	for _, check := range checks {
+		if check.Status != "ok" {
+			overallStatus = "unhealthy"
+			break
+		}
+	}
+
+	response := HealthResponse{
+		Status: overallStatus,
+		Checks: checks,
+	}
+
+	if overallStatus != "ok" {
+		c.JSON(http.StatusServiceUnavailable, response)
+	} else {
+		c.JSON(http.StatusOK, response)
+	}
 }
