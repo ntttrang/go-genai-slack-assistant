@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"go.uber.org/zap"
-	"github.com/slack-translation-bot/interface/slack"
+	"github.com/ntttrang/python-genai-your-slack-assistant/interface/slack"
 )
 
 type SlackWebhookHandler struct {

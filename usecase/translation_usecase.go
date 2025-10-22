@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/slack-translation-bot/domain"
+	"github.com/ntttrang/python-genai-your-slack-assistant/domain"
 )
 
 type TranslationUseCase struct {

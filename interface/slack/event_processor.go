@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	"github.com/slack-translation-bot/domain"
-	"github.com/slack-translation-bot/usecase"
+	"github.com/ntttrang/python-genai-your-slack-assistant/domain"
+	"github.com/ntttrang/python-genai-your-slack-assistant/usecase"
 )
 
 type EventProcessor struct {

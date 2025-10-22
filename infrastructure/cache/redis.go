@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/slack-translation-bot/domain"
+	"github.com/ntttrang/python-genai-your-slack-assistant/domain"
 )
 
 type RedisCache struct {
