@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: slack-bot-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-slack_bot}
+      MYSQL_USER: ${DB_USER:-slack_bot}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-slack_bot_pass}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./infrastructure/database/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    networks:
+      - slack-bot-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: slack-bot-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 3s
+      retries: 5
+    networks:
+      - slack-bot-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: slack-bot-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=${DB_USER:-slack_bot}
+      - DB_PASSWORD=${DB_PASSWORD:-slack_bot_pass}
+      - DB_NAME=${DB_NAME:-slack_bot}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=0
+      - APP_PORT=8080
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    networks:
+      - slack-bot-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  slack-bot-network:
+    driver: bridge
