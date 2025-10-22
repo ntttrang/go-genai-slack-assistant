@@ -1,0 +1,50 @@
+package slack
+
+import (
+	"github.com/slack-go/slack"
+)
+
+type SlackClient struct {
+	client *slack.Client
+}
+
+func NewSlackClient(token string) *SlackClient {
+	return &SlackClient{
+		client: slack.New(token),
+	}
+}
+
+func (sc *SlackClient) GetMessage(channelID, timestamp string) (*slack.Message, error) {
+	params := &slack.GetConversationHistoryParameters{
+		ChannelID: channelID,
+		Limit:     1,
+	}
+
+	history, err := sc.client.GetConversationHistory(params)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(history.Messages) == 0 {
+		return nil, nil
+	}
+
+	return &history.Messages[0], nil
+}
+
+func (sc *SlackClient) PostMessage(channelID, text string, threadTS string) (string, string, error) {
+	opts := []slack.MsgOption{
+		slack.MsgOptionText(text, false),
+	}
+
+	if threadTS != "" {
+		opts = append(opts, slack.MsgOptionTS(threadTS))
+	}
+
+	channel, ts, err := sc.client.PostMessage(channelID, opts...)
+	return channel, ts, err
+}
+
+func (sc *SlackClient) GetUserInfo(userID string) (*slack.User, error) {
+	return sc.client.GetUserInfo(userID)
+}
