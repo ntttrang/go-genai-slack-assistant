@@ -3,6 +3,7 @@ package slack
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
@@ -119,18 +120,27 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 		zap.String("text", textPreview),
 		zap.String("timestamp", ts))
 
+	// Extract emojis and check if remaining text is empty
+	cleanedText, emojis := extractEmojis(text)
+	if strings.TrimSpace(cleanedText) == "" {
+		ep.logger.Info("Skipping translation: message contains only emojis",
+			zap.String("channel_id", channelID),
+			zap.String("user_id", userID))
+		return
+	}
+
 	// Detect message language
-	detectedLang, err := ep.detectLanguage(ctx, text)
+	detectedLang, err := ep.detectLanguage(ctx, cleanedText)
 	if err != nil {
 		ep.logger.Error("Failed to detect message language",
 			zap.Error(err),
-			zap.String("text", text))
+			zap.String("text", cleanedText))
 		return
 	}
 
 	ep.logger.Info("Language detected",
 		zap.String("detected_language", detectedLang),
-		zap.String("text", text[:min(len(text), 30)]))
+		zap.String("text", cleanedText[:min(len(cleanedText), 30)]))
 
 	// Determine target language based on detected source language
 	targetLang := "Vietnamese"
@@ -162,7 +172,7 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 	}
 
 	translationReq := request.Translation{
-		Text:           text,
+		Text:           cleanedText,
 		SourceLanguage: detectedLang,
 		TargetLanguage: targetLang,
 	}
@@ -175,9 +185,11 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 		return
 	}
 
+	translatedText := restoreEmojis(result.TranslatedText, emojis)
+
 	ep.logger.Info("Translation completed",
 		zap.String("original", text),
-		zap.String("translated", result.TranslatedText),
+		zap.String("translated", translatedText),
 		zap.String("source_lang", result.SourceLanguage),
 		zap.String("target_lang", result.TargetLanguage))
 
@@ -186,7 +198,7 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 	if result.TargetLanguage == "English" {
 		emoji = "🇬🇧"
 	}
-	responseText := fmt.Sprintf("%s %s", emoji, result.TranslatedText)
+	responseText := fmt.Sprintf("%s %s", emoji, translatedText)
 	_, _, err = ep.slackClient.PostMessage(channelID, responseText, ts)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message",
@@ -198,7 +210,7 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 	ep.logger.Info("Translation posted successfully",
 		zap.String("channel_id", channelID),
 		zap.String("original", text[:min(len(text), 30)]),
-		zap.String("translated", result.TranslatedText[:min(len(result.TranslatedText), 30)]))
+		zap.String("translated", translatedText[:min(len(translatedText), 30)]))
 }
 
 func (ep *EventProcessor) detectLanguage(ctx context.Context, text string) (string, error) {
@@ -288,12 +300,21 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		return
 	}
 
+	// Extract emojis and check if remaining text is empty
+	cleanedText, emojis := extractEmojis(message.Text)
+	if strings.TrimSpace(cleanedText) == "" {
+		ep.logger.Info("Skipping translation from reaction: message contains only emojis",
+			zap.String("channel_id", channelID),
+			zap.String("message_ts", messageTS))
+		return
+	}
+
 	// Detect language from the message
-	detectedLang, err := ep.detectLanguage(ctx, message.Text)
+	detectedLang, err := ep.detectLanguage(ctx, cleanedText)
 	if err != nil {
 		ep.logger.Error("Failed to detect message language",
 			zap.Error(err),
-			zap.String("text", message.Text))
+			zap.String("text", cleanedText))
 		return
 	}
 
@@ -326,9 +347,8 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
 	}
 
-	// Translate the message
 	translationReq := request.Translation{
-		Text:           message.Text,
+		Text:           cleanedText,
 		SourceLanguage: detectedLang,
 		TargetLanguage: targetLang,
 	}
@@ -341,12 +361,14 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		return
 	}
 
+	translatedText := restoreEmojis(result.TranslatedText, emojis)
+
 	// Post translated message as a thread reply with emoji flag
 	emoji := "🇻🇳"
 	if result.TargetLanguage == "English" {
 		emoji = "🇬🇧"
 	}
-	responseText := fmt.Sprintf("%s %s", emoji, result.TranslatedText)
+	responseText := fmt.Sprintf("%s %s", emoji, translatedText)
 	_, _, err = ep.slackClient.PostMessage(channelID, responseText, messageTS)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message from reaction",
@@ -358,7 +380,7 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 	ep.logger.Info("Translation from reaction posted successfully",
 		zap.String("channel_id", channelID),
 		zap.String("original", message.Text[:min(len(message.Text), 30)]),
-		zap.String("translated", result.TranslatedText[:min(len(result.TranslatedText), 30)]))
+		zap.String("translated", translatedText[:min(len(translatedText), 30)]))
 }
 
 func min(a, b int) int {
@@ -366,4 +388,25 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func extractEmojis(text string) (string, map[string]string) {
+	emojiPattern := regexp.MustCompile(`:[a-zA-Z0-9_-]+:`)
+	emojis := make(map[string]string)
+
+	cleanedText := emojiPattern.ReplaceAllStringFunc(text, func(emoji string) string {
+		placeholder := fmt.Sprintf("EMOJIPLACEHOLDER%d", len(emojis))
+		emojis[placeholder] = emoji
+		return placeholder
+	})
+
+	return cleanedText, emojis
+}
+
+func restoreEmojis(text string, emojis map[string]string) string {
+	result := text
+	for placeholder, emoji := range emojis {
+		result = strings.ReplaceAll(result, placeholder, emoji)
+	}
+	return result
 }
