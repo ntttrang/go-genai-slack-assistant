@@ -120,33 +120,39 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 		zap.String("text", textPreview),
 		zap.String("timestamp", ts))
 
-	// Extract emojis and check if remaining text is empty
-	cleanedText, emojis := extractEmojis(text)
-	if strings.TrimSpace(cleanedText) == "" {
-		ep.logger.Info("Skipping translation: message contains only emojis",
+	// Add eye emoji reaction to the message
+	if err := ep.slackClient.AddReaction("eyes", channelID, ts); err != nil {
+		ep.logger.Warn("Failed to add emoji reaction to message",
+			zap.Error(err),
 			zap.String("channel_id", channelID),
-			zap.String("user_id", userID))
-		return
+			zap.String("timestamp", ts),
+			zap.String("emoji", "eyes"),
+			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
 	}
 
-	// Detect message language
-	detectedLang, err := ep.detectLanguage(ctx, cleanedText)
+	// Detect message language using original text with emoji codes
+	detectedLang, err := ep.detectLanguage(ctx, text)
 	if err != nil {
 		ep.logger.Error("Failed to detect message language",
 			zap.Error(err),
-			zap.String("text", cleanedText))
+			zap.String("text", text))
 		return
 	}
 
 	ep.logger.Info("Language detected",
 		zap.String("detected_language", detectedLang),
-		zap.String("text", cleanedText[:min(len(cleanedText), 30)]))
+		zap.String("text", text[:min(len(text), 30)]))
+
+	if detectedLang == "ko" { // Message contains only emoji, don't translate
+		return
+	}
 
 	// Determine target language based on detected source language
 	targetLang := "Vietnamese"
 	if detectedLang == "Vietnamese" {
 		targetLang = "English"
 	} else if detectedLang != "English" {
+
 		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
 			zap.String("detected_language", detectedLang))
 
@@ -161,18 +167,8 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 		return
 	}
 
-	// Add eye emoji reaction to the message
-	if err := ep.slackClient.AddReaction("eyes", channelID, ts); err != nil {
-		ep.logger.Warn("Failed to add emoji reaction to message",
-			zap.Error(err),
-			zap.String("channel_id", channelID),
-			zap.String("timestamp", ts),
-			zap.String("emoji", "eyes"),
-			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
-	}
-
 	translationReq := request.Translation{
-		Text:           cleanedText,
+		Text:           text,
 		SourceLanguage: detectedLang,
 		TargetLanguage: targetLang,
 	}
@@ -185,7 +181,7 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 		return
 	}
 
-	translatedText := restoreEmojis(result.TranslatedText, emojis)
+	translatedText := result.TranslatedText
 
 	ep.logger.Info("Translation completed",
 		zap.String("original", text),
@@ -283,6 +279,16 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		zap.String("reaction", reaction),
 		zap.String("message_ts", messageTS))
 
+	// Add eye emoji reaction to the message
+	if err := ep.slackClient.AddReaction("eyes", channelID, messageTS); err != nil {
+		ep.logger.Warn("Failed to add emoji reaction to message",
+			zap.Error(err),
+			zap.String("channel_id", channelID),
+			zap.String("timestamp", messageTS),
+			zap.String("emoji", "eyes"),
+			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
+	}
+
 	// Fetch the original message
 	message, err := ep.slackClient.GetMessage(channelID, messageTS)
 	if err != nil {
@@ -300,21 +306,16 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		return
 	}
 
-	// Extract emojis and check if remaining text is empty
-	cleanedText, emojis := extractEmojis(message.Text)
-	if strings.TrimSpace(cleanedText) == "" {
-		ep.logger.Info("Skipping translation from reaction: message contains only emojis",
-			zap.String("channel_id", channelID),
-			zap.String("message_ts", messageTS))
-		return
-	}
-
-	// Detect language from the message
-	detectedLang, err := ep.detectLanguage(ctx, cleanedText)
+	// Detect language from the message using original text with emoji codes
+	detectedLang, err := ep.detectLanguage(ctx, message.Text)
 	if err != nil {
 		ep.logger.Error("Failed to detect message language",
 			zap.Error(err),
-			zap.String("text", cleanedText))
+			zap.String("text", message.Text))
+		return
+	}
+
+	if detectedLang == "ko" { // Message contains only emoji, don't translate
 		return
 	}
 
@@ -337,18 +338,8 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		return
 	}
 
-	// Add eye emoji reaction to the message
-	if err := ep.slackClient.AddReaction("eyes", channelID, messageTS); err != nil {
-		ep.logger.Warn("Failed to add emoji reaction to message",
-			zap.Error(err),
-			zap.String("channel_id", channelID),
-			zap.String("timestamp", messageTS),
-			zap.String("emoji", "eyes"),
-			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
-	}
-
 	translationReq := request.Translation{
-		Text:           cleanedText,
+		Text:           message.Text,
 		SourceLanguage: detectedLang,
 		TargetLanguage: targetLang,
 	}
@@ -361,7 +352,7 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		return
 	}
 
-	translatedText := restoreEmojis(result.TranslatedText, emojis)
+	translatedText := result.TranslatedText
 
 	// Post translated message as a thread reply with emoji flag
 	emoji := "🇻🇳"
