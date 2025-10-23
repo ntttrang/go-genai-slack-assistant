@@ -2,12 +2,13 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/service/slack"
 	"go.uber.org/zap"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/service/slack"
 )
 
 type SlackWebhookHandler struct {
@@ -75,14 +76,18 @@ func (h *SlackWebhookHandler) HandleSlackEventsGin(c *gin.Context) {
 		return
 	}
 
+	h.logger.Info("Received Slack event", zap.String("type", fmt.Sprintf("%v", payload["type"])))
+
 	// Handle URL verification challenge
 	if eventType, ok := payload["type"].(string); ok && eventType == "url_verification" {
 		challenge, ok := payload["challenge"].(string)
 		if !ok {
+			h.logger.Error("Challenge parameter missing or invalid")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request"})
 			return
 		}
-		c.String(http.StatusOK, challenge)
+		h.logger.Info("Responding to URL verification challenge", zap.String("challenge", challenge))
+		c.Data(http.StatusOK, "text/plain", []byte(challenge))
 		return
 	}
 

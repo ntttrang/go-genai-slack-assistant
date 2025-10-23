@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/ratelimit"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/ratelimit"
 )
 
 func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {

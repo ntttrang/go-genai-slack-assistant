@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/request"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/response"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/repository"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/translator"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/response"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/repository"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/translator"
 )
 
 type TranslationUseCase struct {

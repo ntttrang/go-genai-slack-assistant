@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/request"
-	svc "github.com/ntttrang/python-genai-your-slack-assistant/internal/service"
-	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/language"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
+	svc "github.com/ntttrang/go-genai-slack-assistant/internal/service"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/language"
 	"go.uber.org/zap"
 )
 

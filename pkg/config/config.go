@@ -89,7 +89,7 @@ func Load() (*Config, error) {
 		},
 		Gemini: GeminiConfig{
 			APIKey: getEnv("GEMINI_API_KEY", ""),
-			Model:  getEnv("GEMINI_MODEL", "gemini-pro"),
+			Model:  getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
 		},
 		Application: ApplicationConfig{
 			LogLevel:                  getEnv("LOG_LEVEL", "info"),

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
 	"github.com/redis/go-redis/v9"
 )
 

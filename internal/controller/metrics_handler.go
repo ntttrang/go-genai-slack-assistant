@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/metrics"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/metrics"
 	"go.uber.org/zap"
 )
 

@@ -3,8 +3,8 @@ package service
 import (
 	"fmt"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/repository"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/repository"
 )
 
 type ChannelUseCase struct {

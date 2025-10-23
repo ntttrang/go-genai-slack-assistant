@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

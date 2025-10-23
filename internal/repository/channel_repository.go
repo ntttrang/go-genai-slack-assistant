@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
 )
 
 type ChannelRepository interface {

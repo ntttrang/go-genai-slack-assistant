@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
 	"github.com/stretchr/testify/assert"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
 )
 
 func TestValidateMessage_Empty(t *testing.T) {

@@ -12,7 +12,7 @@ if [ -z "$SLACK_SIGNING_SECRET" ]; then
 fi
 
 TIMESTAMP=$(date +%s)
-BODY='{"type":"event_callback","event":{"type":"message","text":"Hello world","channel":"chatchit","user":"U123456","ts":"'${TIMESTAMP}'.000001"}}'
+BODY='{"type":"event_callback","event":{"type":"message","text":"Bạn khoẻ không?","channel":"chatchit","user":"U123456","ts":"'${TIMESTAMP}'.000001"}}'
 SIG_BASE="v0:${TIMESTAMP}:${BODY}"
 
 # Generate HMAC signature using the same method as Slack
@@ -25,7 +25,7 @@ echo "Timestamp: $TIMESTAMP"
 echo "Signature: $COMPUTED_SIG"
 echo ""
 
-curl -X POST http://localhost:8080/slack/events \
+curl -X POST https://e33066f072d2.ngrok-free.app/slack/events \
     -H "Content-Type: application/json" \
     -H "X-Slack-Request-Timestamp: $TIMESTAMP" \
     -H "X-Slack-Signature: $COMPUTED_SIG" \

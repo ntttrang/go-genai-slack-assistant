@@ -11,14 +11,14 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
 )
 
 type IntegrationTestSuite struct {
 	suite.Suite
-	db        *sql.DB
+	db          *sql.DB
 	redisClient *redis.Client
-	logger    *zap.Logger
+	logger      *zap.Logger
 }
 
 func (suite *IntegrationTestSuite) SetupSuite() {
@@ -135,13 +135,13 @@ func (suite *IntegrationTestSuite) TestMessageEntity() {
 // TestTranslationEntity tests translation entity
 func (suite *IntegrationTestSuite) TestTranslationEntity() {
 	trans := model.Translation{
-		ID:             "trans_123",
+		ID:              "trans_123",
 		SourceMessageID: "msg_456",
-		SourceText:     "Hello",
-		SourceLanguage: "en",
-		TranslatedText: "Xin chào",
-		TargetLanguage: "vi",
-		CreatedAt:      time.Now(),
+		SourceText:      "Hello",
+		SourceLanguage:  "en",
+		TranslatedText:  "Xin chào",
+		TargetLanguage:  "vi",
+		CreatedAt:       time.Now(),
 	}
 
 	assert.Equal(suite.T(), "trans_123", trans.ID)

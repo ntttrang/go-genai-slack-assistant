@@ -14,16 +14,16 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/controller"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/middleware"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/repository"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/service"
-	slackservice "github.com/ntttrang/python-genai-your-slack-assistant/internal/service/slack"
-	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/ai"
-	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/cache"
-	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/config"
-	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/database"
-	"github.com/ntttrang/python-genai-your-slack-assistant/pkg/metrics"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/controller"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/repository"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
+	slackservice "github.com/ntttrang/go-genai-slack-assistant/internal/service/slack"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/ai"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/cache"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/config"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/database"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/metrics"
 )
 
 func main() {

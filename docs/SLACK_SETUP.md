@@ -1,7 +1,7 @@
 # Slack Bot Setup Guide
 ## Required Bot Token Scopes
 
-To fix this, go to your Slack App settings (https://api.slack.com/apps) and add these **Bot Token Scopes**:
+Go to your Slack App settings (https://api.slack.com/apps) and add these **Bot Token Scopes**:
 
 ### Required Scopes:
 1. **`channels:history`** - Read messages in public channels
@@ -34,8 +34,9 @@ To fix this, go to your Slack App settings (https://api.slack.com/apps) and add 
       ``` bash
       https://xxxx-xxx-xxx.ngrok.io/slack/events
       ```
-      *** If it says "Verified" ✅, you're good
-      *** If it fails ❌, your server might not be accessible or not running
+      *** If it says "Verified" ✅, you're good \
+      *** If it fails ❌, your server might not be accessible or not running \
+      *** Under "Subscribe to bot events", add `message.channels` (and others you need) 
 
 *** If your server start on local, use ngrok to public host ( for testing only)
     ```bash

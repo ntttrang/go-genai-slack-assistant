@@ -1,4 +1,4 @@
-module github.com/ntttrang/python-genai-your-slack-assistant
+module github.com/ntttrang/go-genai-slack-assistant
 
 go 1.25.1
 

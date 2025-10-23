@@ -3,11 +3,12 @@ package slack
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/translator"
 	"go.uber.org/zap"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/dto/request"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/service"
-	"github.com/ntttrang/python-genai-your-slack-assistant/internal/translator"
 )
 
 type EventProcessor struct {
@@ -138,7 +139,7 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 	} else if detectedLang != "English" {
 		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
 			zap.String("detected_language", detectedLang))
-		
+
 		// Post error message to thread
 		errorMsg := "Sorry, I can't support this language. I only translate English and Vietnamese."
 		_, _, err := ep.slackClient.PostMessage(channelID, errorMsg, ts)
@@ -219,6 +220,7 @@ func (ep *EventProcessor) detectLanguage(ctx context.Context, text string) (stri
 
 func normalizeLanguageCode(code string) string {
 	// Normalize common language codes to full names
+	code = strings.TrimSpace(code)
 	switch code {
 	case "en", "EN", "english", "eng":
 		return "English"
@@ -302,7 +304,7 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 	} else if detectedLang != "English" {
 		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
 			zap.String("detected_language", detectedLang))
-		
+
 		// Post error message to thread
 		errorMsg := "Sorry, I can't support this language. I only translate English and Vietnamese."
 		_, _, err := ep.slackClient.PostMessage(channelID, errorMsg, messageTS)

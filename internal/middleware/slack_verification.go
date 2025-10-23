@@ -70,6 +70,7 @@ func VerifySlackSignatureGin(signingSecret string) gin.HandlerFunc {
 		signature := c.GetHeader("X-Slack-Signature")
 
 		if timestamp == "" || signature == "" {
+			fmt.Printf("[Slack Verification] Missing signature headers - timestamp: %v, signature: %v\n", timestamp != "", signature != "")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing signature headers"})
 			return
 		}
@@ -104,10 +105,12 @@ func VerifySlackSignatureGin(signingSecret string) gin.HandlerFunc {
 		expectedSig := "v0=" + hex.EncodeToString(hash.Sum(nil))
 
 		if !hmac.Equal([]byte(signature), []byte(expectedSig)) {
+			fmt.Printf("[Slack Verification] Invalid signature - expected: %s, got: %s\n", expectedSig, signature)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid signature"})
 			return
 		}
 
+		fmt.Println("[Slack Verification] Signature verified successfully")
 		c.Next()
 	}
 }
