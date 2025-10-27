@@ -130,6 +130,13 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
 	}
 
+	// Check if message contains only emoji codes
+	if isEmojiOnly(text) {
+		ep.logger.Info("Message contains only emoji, skipping translation",
+			zap.String("text", text))
+		return
+	}
+
 	// Detect message language using original text with emoji codes
 	detectedLang, err := ep.detectLanguage(ctx, text)
 	if err != nil {
@@ -142,10 +149,6 @@ func (ep *EventProcessor) handleMessageEvent(ctx context.Context, event map[stri
 	ep.logger.Info("Language detected",
 		zap.String("detected_language", detectedLang),
 		zap.String("text", text[:min(len(text), 30)]))
-
-	if detectedLang == "ko" { // Message contains only emoji, don't translate
-		return
-	}
 
 	// Determine target language based on detected source language
 	targetLang := "Vietnamese"
@@ -306,16 +309,19 @@ func (ep *EventProcessor) handleReactionEvent(ctx context.Context, event map[str
 		return
 	}
 
+	// Check if message contains only emoji codes
+	if isEmojiOnly(message.Text) {
+		ep.logger.Info("Message contains only emoji, skipping translation from reaction",
+			zap.String("text", message.Text))
+		return
+	}
+
 	// Detect language from the message using original text with emoji codes
 	detectedLang, err := ep.detectLanguage(ctx, message.Text)
 	if err != nil {
 		ep.logger.Error("Failed to detect message language",
 			zap.Error(err),
 			zap.String("text", message.Text))
-		return
-	}
-
-	if detectedLang == "ko" { // Message contains only emoji, don't translate
 		return
 	}
 
@@ -379,6 +385,18 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func isEmojiOnly(text string) bool {
+	emojiPattern := regexp.MustCompile(`:[a-zA-Z0-9_-]+:`)
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	// Remove all emoji codes
+	withoutEmojis := emojiPattern.ReplaceAllString(trimmed, "")
+	// Check if anything is left after removing emojis and whitespace
+	return strings.TrimSpace(withoutEmojis) == ""
 }
 
 func extractEmojis(text string) (string, map[string]string) {
