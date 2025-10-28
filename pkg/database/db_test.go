@@ -31,45 +31,63 @@ func TestNewDB_Success(t *testing.T) {
 	assert.Contains(t, expectedDSN, config.Database)
 }
 
-func TestDatabaseConnectionPoolSettings(t *testing.T) {
-	// Create a mock database to test connection pool settings with ping monitoring
-	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-	require.NoError(t, err)
-	defer db.Close()
-	
-	// Expect ping to succeed
-	mock.ExpectPing()
-	
-	// Set connection pool settings (simulating NewDB behavior)
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	
-	// Verify settings
-	err = db.Ping()
-	assert.NoError(t, err)
-	
-	// Verify all expectations were met
-	err = mock.ExpectationsWereMet()
-	assert.NoError(t, err)
-}
+func TestDatabasePing(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupMock   func(sqlmock.Sqlmock)
+		wantErr     bool
+		expectedErr error
+	}{
+		{
+			name: "successful ping with connection pool settings",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectPing()
+			},
+			wantErr: false,
+		},
+		{
+			name: "ping failure with connection error",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectPing().WillReturnError(sql.ErrConnDone)
+			},
+			wantErr:     true,
+			expectedErr: sql.ErrConnDone,
+		},
+		{
+			name: "ping failure with timeout error",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectPing().WillReturnError(fmt.Errorf("connection timeout"))
+			},
+			wantErr: true,
+		},
+	}
 
-func TestDatabasePingFailure(t *testing.T) {
-	// Test that connection failures are properly handled
-	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-	require.NoError(t, err)
-	defer db.Close()
-	
-	// Expect ping to fail
-	mock.ExpectPing().WillReturnError(sql.ErrConnDone)
-	
-	// Verify ping error is returned
-	err = db.Ping()
-	assert.Error(t, err)
-	assert.Equal(t, sql.ErrConnDone, err)
-	
-	// Verify all expectations were met
-	err = mock.ExpectationsWereMet()
-	assert.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+			require.NoError(t, err)
+			defer db.Close()
+
+			tt.setupMock(mock)
+
+			db.SetMaxOpenConns(25)
+			db.SetMaxIdleConns(5)
+
+			err = db.Ping()
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.expectedErr != nil {
+					assert.Equal(t, tt.expectedErr, err)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+
+			err = mock.ExpectationsWereMet()
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestDBConfigValidation(t *testing.T) {
@@ -115,98 +133,231 @@ func TestDBConfigValidation(t *testing.T) {
 	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Construct DSN as NewDB does
 			dsn := constructDSN(tt.config)
 			assert.Equal(t, tt.wantDSN, dsn)
 		})
 	}
 }
 
-// Helper function to construct DSN (extracted from NewDB logic)
 func constructDSN(config DBConfig) string {
 	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci",
 		config.User, config.Password, config.Host, config.Port, config.Database)
 }
 
 func TestDatabaseConnectionRetries(t *testing.T) {
-	// Test that database handles transient connection issues
-	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-	require.NoError(t, err)
-	defer db.Close()
-	
-	// First ping fails
-	mock.ExpectPing().WillReturnError(sql.ErrConnDone)
-	
-	err = db.Ping()
-	assert.Error(t, err)
-	
-	// Second ping succeeds
-	mock.ExpectPing()
-	
-	err = db.Ping()
-	assert.NoError(t, err)
-	
-	// Verify all expectations were met
-	err = mock.ExpectationsWereMet()
-	assert.NoError(t, err)
+	tests := []struct {
+		name      string
+		setupMock func(sqlmock.Sqlmock)
+		attempts  int
+	}{
+		{
+			name: "first ping fails, second succeeds",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectPing().WillReturnError(sql.ErrConnDone)
+				mock.ExpectPing()
+			},
+			attempts: 2,
+		},
+		{
+			name: "multiple failures before success",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectPing().WillReturnError(sql.ErrConnDone)
+				mock.ExpectPing().WillReturnError(sql.ErrConnDone)
+				mock.ExpectPing()
+			},
+			attempts: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+			require.NoError(t, err)
+			defer db.Close()
+
+			tt.setupMock(mock)
+
+			for i := 0; i < tt.attempts; i++ {
+				err = db.Ping()
+			}
+
+			assert.NoError(t, err)
+
+			err = mock.ExpectationsWereMet()
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestDatabaseQueryExecution(t *testing.T) {
-	// Test basic query execution to ensure database connectivity works
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer db.Close()
-	
-	// Expect a simple query
-	rows := sqlmock.NewRows([]string{"count"}).AddRow(1)
-	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM translations").WillReturnRows(rows)
-	
-	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM translations").Scan(&count)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, count)
-	
-	// Verify all expectations were met
-	err = mock.ExpectationsWereMet()
-	assert.NoError(t, err)
+	tests := []struct {
+		name          string
+		query         string
+		setupMock     func(sqlmock.Sqlmock)
+		expectedCount int
+		wantErr       bool
+	}{
+		{
+			name:  "successful query with results",
+			query: "SELECT COUNT(*) FROM translations",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"count"}).AddRow(1)
+				mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM translations").WillReturnRows(rows)
+			},
+			expectedCount: 1,
+			wantErr:       false,
+		},
+		{
+			name:  "query with zero results",
+			query: "SELECT COUNT(*) FROM translations",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"count"}).AddRow(0)
+				mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM translations").WillReturnRows(rows)
+			},
+			expectedCount: 0,
+			wantErr:       false,
+		},
+		{
+			name:  "query with multiple results",
+			query: "SELECT COUNT(*) FROM translations",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"count"}).AddRow(100)
+				mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM translations").WillReturnRows(rows)
+			},
+			expectedCount: 100,
+			wantErr:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer db.Close()
+
+			tt.setupMock(mock)
+
+			var count int
+			err = db.QueryRow(tt.query).Scan(&count)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedCount, count)
+			}
+
+			err = mock.ExpectationsWereMet()
+			assert.NoError(t, err)
+		})
+	}
 }
 
-func TestDatabaseTransactionSupport(t *testing.T) {
-	// Test that database supports transactions
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer db.Close()
-	
-	// Expect transaction begin
-	mock.ExpectBegin()
-	
-	tx, err := db.Begin()
-	assert.NoError(t, err)
-	assert.NotNil(t, tx)
-	
-	// Expect commit
-	mock.ExpectCommit()
-	
-	err = tx.Commit()
-	assert.NoError(t, err)
-	
-	// Verify all expectations were met
-	err = mock.ExpectationsWereMet()
-	assert.NoError(t, err)
+func TestDatabaseTransactions(t *testing.T) {
+	tests := []struct {
+		name      string
+		setupMock func(sqlmock.Sqlmock)
+		operation string
+		wantErr   bool
+	}{
+		{
+			name: "successful transaction with commit",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectCommit()
+			},
+			operation: "commit",
+			wantErr:   false,
+		},
+		{
+			name: "successful transaction with rollback",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectRollback()
+			},
+			operation: "rollback",
+			wantErr:   false,
+		},
+		{
+			name: "transaction begin failure",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin().WillReturnError(sql.ErrConnDone)
+			},
+			operation: "begin",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer db.Close()
+
+			tt.setupMock(mock)
+
+			tx, err := db.Begin()
+			if tt.operation == "begin" && tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, tx)
+
+				switch tt.operation {
+				case "commit":
+					err = tx.Commit()
+					assert.NoError(t, err)
+				case "rollback":
+					err = tx.Rollback()
+					assert.NoError(t, err)
+				}
+			}
+
+			err = mock.ExpectationsWereMet()
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestDatabaseConnectionClose(t *testing.T) {
-	// Test that database connections are properly closed
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	
-	// Expect close
-	mock.ExpectClose()
-	
-	err = db.Close()
-	assert.NoError(t, err)
-	
-	// Verify all expectations were met
-	err = mock.ExpectationsWereMet()
-	assert.NoError(t, err)
+	tests := []struct {
+		name      string
+		setupMock func(sqlmock.Sqlmock)
+		wantErr   bool
+	}{
+		{
+			name: "successful close",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectClose()
+			},
+			wantErr: false,
+		},
+		{
+			name: "close failure",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectClose().WillReturnError(fmt.Errorf("close error"))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+
+			tt.setupMock(mock)
+
+			err = db.Close()
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			err = mock.ExpectationsWereMet()
+			assert.NoError(t, err)
+		})
+	}
 }

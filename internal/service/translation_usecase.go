@@ -11,8 +11,12 @@ import (
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/response"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
-	"github.com/ntttrang/go-genai-slack-assistant/internal/translator"
 )
+
+type Translator interface {
+	Translate(text, sourceLanguage, targetLanguage string) (string, error)
+	DetectLanguage(text string) (string, error)
+}
 
 // TranslationRepository defines the interface for translation persistence.
 // This interface is owned by the TranslationUseCase and defined where it's consumed.
@@ -28,7 +32,7 @@ var _ TranslationService = (*TranslationUseCase)(nil)
 type TranslationUseCase struct {
 	repo               TranslationRepository
 	cache              Cache
-	translator         translator.Translator
+	translator         Translator
 	cacheTTL           int64
 	securityMiddleware *middleware.SecurityMiddleware
 }
@@ -36,7 +40,7 @@ type TranslationUseCase struct {
 func NewTranslationUseCase(
 	repo TranslationRepository,
 	cache Cache,
-	translator translator.Translator,
+	translator Translator,
 	cacheTTL int64,
 	securityMiddleware *middleware.SecurityMiddleware,
 ) *TranslationUseCase {
@@ -75,7 +79,7 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 
 	// 4. Try to get from database
 	existingTranslation, err := tu.repo.GetByHash(hash)
-	if err == nil && existingTranslation != nil {
+	if (err == nil && existingTranslation != nil) || (err != nil && err.Error() != "record not found") {
 		tu.cache.Set(cacheKey, existingTranslation.TranslatedText, tu.cacheTTL)
 		return response.Translation{
 			OriginalText:   req.Text,
