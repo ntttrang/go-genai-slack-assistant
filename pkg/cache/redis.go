@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -13,7 +13,7 @@ type RedisCache struct {
 	client *redis.Client
 }
 
-func NewRedisCache(host string, port int, password string) (model.Cache, error) {
+func NewRedisCache(host string, port int, password string) (service.Cache, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", host, port),
 		Password: password,

@@ -1,24 +1,20 @@
-package repository
+package gormmysql
 
 import (
 	"database/sql"
 	"fmt"
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
 )
 
-type TranslationRepository interface {
-	Save(translation *model.Translation) error
-	GetByHash(hash string) (*model.Translation, error)
-	GetByID(id string) (*model.Translation, error)
-	GetByChannelID(channelID string, limit int) ([]*model.Translation, error)
-}
-
+// TranslationRepositoryImpl implements service.TranslationRepository interface
 type TranslationRepositoryImpl struct {
 	db *sql.DB
 }
 
-func NewTranslationRepository(db *sql.DB) TranslationRepository {
+// NewTranslationRepository creates a new translation repository instance
+func NewTranslationRepository(db *sql.DB) service.TranslationRepository {
 	return &TranslationRepositoryImpl{db: db}
 }
 

@@ -16,7 +16,7 @@ import (
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/controller"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
-	"github.com/ntttrang/go-genai-slack-assistant/internal/repository"
+	gormmysql "github.com/ntttrang/go-genai-slack-assistant/internal/repository/gorm-mysql"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
 	slackservice "github.com/ntttrang/go-genai-slack-assistant/internal/service/slack"
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/ai"
@@ -98,18 +98,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize translation repository
-	translationRepo := repository.NewTranslationRepository(db)
+	// Initialize translation repository (implements model.TranslationRepository interface)
+	translationRepo := gormmysql.NewTranslationRepository(db)
 
-	// Initialize translation use case
+	// Initialize translation use case (implements service.TranslationService interface)
 	cacheTTL := int64(cfg.Application.CacheTTLTranslation)
 	translationUseCase := service.NewTranslationUseCase(translationRepo, cacheInstance, geminiProvider, cacheTTL)
 
 	// Initialize Slack client
 	slackClient := slackservice.NewSlackClient(cfg.Slack.BotToken)
 
-	// Initialize event processor
-	eventProcessor := slackservice.NewEventProcessor(translationUseCase, slackClient, log)
+	// Initialize event processor (implements slack.EventProcessor interface)
+	var eventProc slackservice.EventProcessor = slackservice.NewEventProcessor(translationUseCase, slackClient, log)
 
 	// Initialize router
 	r := gin.Default()
@@ -126,7 +126,7 @@ func main() {
 	slackGroup := r.Group("/slack")
 	slackGroup.Use(middleware.VerifySlackSignatureGin(cfg.Slack.SigningSecret))
 	{
-		slackHandler := controller.NewSlackWebhookHandler(eventProcessor, log)
+		slackHandler := controller.NewSlackWebhookHandler(eventProc, log)
 		slackGroup.POST("/events", slackHandler.HandleSlackEventsGin)
 	}
 

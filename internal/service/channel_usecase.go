@@ -4,15 +4,26 @@ import (
 	"fmt"
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
-	"github.com/ntttrang/go-genai-slack-assistant/internal/repository"
 )
 
-type ChannelUseCase struct {
-	repo  repository.ChannelRepository
-	cache model.Cache
+// ChannelRepository defines the interface for channel configuration persistence.
+// This interface is owned by the ChannelUseCase and defined where it's consumed.
+type ChannelRepository interface {
+	Save(config *model.ChannelConfig) error
+	GetByChannelID(channelID string) (*model.ChannelConfig, error)
+	Update(config *model.ChannelConfig) error
+	Delete(channelID string) error
+	GetAll() ([]*model.ChannelConfig, error)
 }
 
-func NewChannelUseCase(repo repository.ChannelRepository, cache model.Cache) *ChannelUseCase {
+var _ ChannelService = (*ChannelUseCase)(nil)
+
+type ChannelUseCase struct {
+	repo  ChannelRepository
+	cache Cache
+}
+
+func NewChannelUseCase(repo ChannelRepository, cache Cache) *ChannelUseCase {
 	return &ChannelUseCase{
 		repo:  repo,
 		cache: cache,
