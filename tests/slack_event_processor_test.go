@@ -7,10 +7,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/security"
 )
 
 type MockTranslator struct {
@@ -109,8 +112,12 @@ func TestVietnameseMessageToEnglishTranslation(t *testing.T) {
 	// Mock cache set
 	mockCache.On("Set", mock.Anything, englishTranslation, int64(86400)).Return(nil)
 
-	// Create translation use case
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+	// Create translation use case with security middleware
+	inputValidator := security.NewInputValidator(5000)
+	outputValidator := security.NewOutputValidator(10000)
+	logger := zap.NewNop()
+	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
+	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test translation Vietnamese to English
 	req := request.Translation{
@@ -155,8 +162,12 @@ func TestEnglishMessageToVietnameseTranslation(t *testing.T) {
 	// Mock cache set
 	mockCache.On("Set", mock.Anything, vietnameseTranslation, int64(86400)).Return(nil)
 
-	// Create translation use case
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+	// Create translation use case with security middleware
+	inputValidator := security.NewInputValidator(5000)
+	outputValidator := security.NewOutputValidator(10000)
+	logger := zap.NewNop()
+	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
+	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test translation English to Vietnamese
 	req := request.Translation{
@@ -189,8 +200,12 @@ func TestTranslationUseCaseIntegration(t *testing.T) {
 	mockRepo.On("Save", mock.Anything).Return(nil)
 	mockCache.On("Set", mock.Anything, "Xin chào", int64(86400)).Return(nil)
 
-	// Create use case
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+	// Create use case with security middleware
+	inputValidator := security.NewInputValidator(5000)
+	outputValidator := security.NewOutputValidator(10000)
+	logger := zap.NewNop()
+	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
+	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test translation
 	req := request.Translation{
