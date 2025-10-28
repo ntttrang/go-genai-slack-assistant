@@ -15,3 +15,7 @@ type Translation struct {
 	CreatedAt       time.Time
 	TTL             int64
 }
+
+func (Translation) TableName() string {
+	return "translations"
+}

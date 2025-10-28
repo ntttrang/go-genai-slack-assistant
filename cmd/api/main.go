@@ -56,12 +56,17 @@ func main() {
 		Database: cfg.Database.Database,
 	}
 
-	db, err := database.NewDB(dbConfig)
+	gormDB, err := database.NewGormDB(dbConfig)
 	if err != nil {
-		log.Error("Failed to initialize database", zap.Error(err))
+		log.Error("Failed to initialize GORM database", zap.Error(err))
 		os.Exit(1)
 	}
-	defer db.Close()
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		log.Error("Failed to get sql.DB from GORM", zap.Error(err))
+		os.Exit(1)
+	}
+	defer sqlDB.Close()
 	log.Info("Database connected successfully")
 
 	// Initialize cache (which also connects to Redis)
@@ -100,7 +105,7 @@ func main() {
 	}
 
 	// Initialize translation repository (implements model.TranslationRepository interface)
-	translationRepo := gormmysql.NewTranslationRepository(db)
+	translationRepo := gormmysql.NewTranslationRepository(gormDB)
 
 	// Initialize security components
 	inputValidator := security.NewInputValidator(cfg.Security.MaxInputLength)
@@ -121,7 +126,7 @@ func main() {
 	r := gin.Default()
 
 	// Health check endpoint
-	healthHandler := controller.NewHealthCheckHandler(db, redisClient, log)
+	healthHandler := controller.NewHealthCheckHandler(sqlDB, redisClient, log)
 	r.GET("/health", healthHandler.HandleHealthGin)
 
 	// Metrics endpoint

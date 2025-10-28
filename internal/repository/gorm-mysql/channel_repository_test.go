@@ -1,232 +1,343 @@
 package gormmysql
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
-func TestChannelRepositoryImpl_Save(t *testing.T) {
+func setupMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
 	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
+	require.NoError(t, err)
 
-	repo := NewChannelRepository(db)
+	gormDB, err := gorm.Open(mysql.New(mysql.Config{
+		Conn:                      db,
+		SkipInitializeWithVersion: true,
+	}), &gorm.Config{})
+	require.NoError(t, err)
 
-	config := &model.ChannelConfig{
-		ChannelID:       "C123456",
-		TargetLanguage:  "Vietnamese",
-		Enabled:         true,
-		SourceLanguages: []string{"English"},
+	return gormDB, mock
+}
+
+func closeMockDB(t *testing.T, db *sql.DB, mock sqlmock.Sqlmock) {
+	err := mock.ExpectationsWereMet()
+	require.NoError(t, err, "not all database expectations were met")
+
+	db.Close()
+}
+
+func TestChannelRepositoryImpl_Save(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name        string
+		config      *model.ChannelConfig
+		mockSetup   func(sqlmock.Sqlmock, *model.ChannelConfig)
+		expectError bool
+	}{
+		{
+			name: "successful save",
+			config: &model.ChannelConfig{
+				ID:              "test-1",
+				ChannelID:       "C123456",
+				TargetLanguage:  "Vietnamese",
+				Enabled:         true,
+				SourceLanguages: `["English"]`,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+			},
+			mockSetup: func(mock sqlmock.Sqlmock, config *model.ChannelConfig) {
+				mock.ExpectBegin()
+				mock.ExpectExec("INSERT INTO `channel_configs`").
+					WithArgs(config.ID, config.ChannelID, config.AutoTranslate, config.SourceLanguages, config.TargetLanguage, config.Enabled, sqlmock.AnyArg(), sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			},
+			expectError: false,
+		},
+		{
+			name: "save with auto translate enabled",
+			config: &model.ChannelConfig{
+				ID:              "test-2",
+				ChannelID:       "C789012",
+				AutoTranslate:   true,
+				TargetLanguage:  "Spanish",
+				Enabled:         true,
+				SourceLanguages: `["French"]`,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+			},
+			mockSetup: func(mock sqlmock.Sqlmock, config *model.ChannelConfig) {
+				mock.ExpectBegin()
+				mock.ExpectExec("INSERT INTO `channel_configs`").
+					WithArgs(config.ID, config.ChannelID, config.AutoTranslate, config.SourceLanguages, config.TargetLanguage, config.Enabled, sqlmock.AnyArg(), sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			},
+			expectError: false,
+		},
 	}
 
-	mock.ExpectExec("INSERT INTO channel_configs").
-		WithArgs(
-			config.ChannelID,
-			config.AutoTranslate,
-			sqlmock.AnyArg(),
-			config.TargetLanguage,
-			config.Enabled,
-		).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gormDB, mock := setupMockDB(t)
+			sqlDB, _ := gormDB.DB()
+			defer closeMockDB(t, sqlDB, mock)
+			repo := NewChannelRepository(gormDB)
 
-	err = repo.Save(config)
+			tt.mockSetup(mock, tt.config)
 
-	assert.NoError(t, err)
-	assert.NoError(t, mock.ExpectationsWereMet())
+			err := repo.Save(tt.config)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestChannelRepositoryImpl_GetByChannelID(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := NewChannelRepository(db)
-	channelID := "C123456"
 	now := time.Now()
+	tests := []struct {
+		name          string
+		channelID     string
+		mockSetup     func(sqlmock.Sqlmock, string, time.Time)
+		expectError   bool
+		validateResult func(*testing.T, *model.ChannelConfig)
+	}{
+		{
+			name:      "found channel config",
+			channelID: "C123456",
+			mockSetup: func(mock sqlmock.Sqlmock, channelID string, now time.Time) {
+				rows := sqlmock.NewRows([]string{"id", "channel_id", "auto_translate", "source_languages", "target_language", "enabled", "created_at", "updated_at"}).
+					AddRow("test-1", channelID, true, `["English"]`, "Vietnamese", true, now, now)
+				mock.ExpectQuery("SELECT \\* FROM `channel_configs` WHERE channel_id = \\?").
+					WithArgs(channelID, 1).
+					WillReturnRows(rows)
+			},
+			expectError: false,
+			validateResult: func(t *testing.T, result *model.ChannelConfig) {
+				assert.NotNil(t, result)
+				assert.Equal(t, "C123456", result.ChannelID)
+				assert.Equal(t, "Vietnamese", result.TargetLanguage)
+				assert.True(t, result.Enabled)
+			},
+		},
+		{
+			name:      "channel not found",
+			channelID: "C999999",
+			mockSetup: func(mock sqlmock.Sqlmock, channelID string, now time.Time) {
+				rows := sqlmock.NewRows([]string{"id", "channel_id", "auto_translate", "source_languages", "target_language", "enabled", "created_at", "updated_at"})
+				mock.ExpectQuery("SELECT \\* FROM `channel_configs` WHERE channel_id = \\?").
+					WithArgs(channelID, 1).
+					WillReturnRows(rows)
+			},
+			expectError: true,
+			validateResult: func(t *testing.T, result *model.ChannelConfig) {
+				assert.Nil(t, result)
+			},
+		},
+	}
 
-	rows := sqlmock.NewRows([]string{
-		"id", "channel_id", "auto_translate", "source_languages",
-		"target_language", "enabled", "created_at", "updated_at",
-	}).AddRow(
-		"1", channelID, true, "English",
-		"Vietnamese", true, now, now,
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gormDB, mock := setupMockDB(t)
+			sqlDB, _ := gormDB.DB()
+			defer closeMockDB(t, sqlDB, mock)
+			repo := NewChannelRepository(gormDB)
 
-	mock.ExpectQuery("SELECT (.+) FROM channel_configs WHERE channel_id").
-		WithArgs(channelID).
-		WillReturnRows(rows)
+			tt.mockSetup(mock, tt.channelID, now)
 
-	result, err := repo.GetByChannelID(channelID)
+			result, err := repo.GetByChannelID(tt.channelID)
 
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, channelID, result.ChannelID)
-	assert.Equal(t, "Vietnamese", result.TargetLanguage)
-	assert.True(t, result.Enabled)
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestChannelRepositoryImpl_GetByChannelID_NotFound(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := NewChannelRepository(db)
-	channelID := "C999999"
-
-	mock.ExpectQuery("SELECT (.+) FROM channel_configs WHERE channel_id").
-		WithArgs(channelID).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "channel_id", "auto_translate", "source_languages",
-			"target_language", "enabled", "created_at", "updated_at",
-		}))
-
-	result, err := repo.GetByChannelID(channelID)
-
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.NoError(t, mock.ExpectationsWereMet())
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			tt.validateResult(t, result)
+		})
+	}
 }
 
 func TestChannelRepositoryImpl_Update(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := NewChannelRepository(db)
-
-	config := &model.ChannelConfig{
-		ChannelID:       "C123456",
-		TargetLanguage:  "English",
-		Enabled:         false,
-		SourceLanguages: []string{"Vietnamese"},
+	now := time.Now()
+	tests := []struct {
+		name        string
+		config      *model.ChannelConfig
+		mockSetup   func(sqlmock.Sqlmock, *model.ChannelConfig)
+		expectError bool
+	}{
+		{
+			name: "successful update",
+			config: &model.ChannelConfig{
+				ID:              "test-1",
+				ChannelID:       "C123456",
+				TargetLanguage:  "English",
+				Enabled:         false,
+				SourceLanguages: `["Vietnamese"]`,
+				UpdatedAt:       now,
+			},
+			mockSetup: func(mock sqlmock.Sqlmock, config *model.ChannelConfig) {
+				mock.ExpectBegin()
+				mock.ExpectExec("UPDATE `channel_configs` SET").
+					WithArgs(config.AutoTranslate, config.Enabled, `["Vietnamese"]`, config.TargetLanguage, sqlmock.AnyArg(), config.ChannelID).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			},
+			expectError: false,
+		},
+		{
+			name: "update not found",
+			config: &model.ChannelConfig{
+				ID:              "nonexistent",
+				ChannelID:       "C999999",
+				TargetLanguage:  "English",
+				Enabled:         true,
+				SourceLanguages: `["Vietnamese"]`,
+			},
+			mockSetup: func(mock sqlmock.Sqlmock, config *model.ChannelConfig) {
+				mock.ExpectBegin()
+				mock.ExpectExec("UPDATE `channel_configs` SET").
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), config.ChannelID).
+					WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectCommit()
+			},
+			expectError: true,
+		},
 	}
 
-	mock.ExpectExec("UPDATE channel_configs").
-		WithArgs(
-			config.AutoTranslate,
-			sqlmock.AnyArg(),
-			config.TargetLanguage,
-			config.Enabled,
-			config.ChannelID,
-		).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gormDB, mock := setupMockDB(t)
+			sqlDB, _ := gormDB.DB()
+			defer closeMockDB(t, sqlDB, mock)
+			repo := NewChannelRepository(gormDB)
 
-	err = repo.Update(config)
+			tt.mockSetup(mock, tt.config)
 
-	assert.NoError(t, err)
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
+			err := repo.Update(tt.config)
 
-func TestChannelRepositoryImpl_Update_NotFound(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := NewChannelRepository(db)
-
-	config := &model.ChannelConfig{
-		ChannelID: "C999999",
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
 	}
-
-	mock.ExpectExec("UPDATE channel_configs").
-		WillReturnResult(sqlmock.NewResult(0, 0))
-
-	err = repo.Update(config)
-
-	assert.Error(t, err)
-	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestChannelRepositoryImpl_Delete(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
+	tests := []struct {
+		name        string
+		channelID   string
+		mockSetup   func(sqlmock.Sqlmock, string)
+		expectError bool
+	}{
+		{
+			name:      "successful delete",
+			channelID: "C123456",
+			mockSetup: func(mock sqlmock.Sqlmock, channelID string) {
+				mock.ExpectBegin()
+				mock.ExpectExec("DELETE FROM `channel_configs` WHERE channel_id = \\?").
+					WithArgs(channelID).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			},
+			expectError: false,
+		},
+		{
+			name:      "delete not found",
+			channelID: "C999999",
+			mockSetup: func(mock sqlmock.Sqlmock, channelID string) {
+				mock.ExpectBegin()
+				mock.ExpectExec("DELETE FROM `channel_configs` WHERE channel_id = \\?").
+					WithArgs(channelID).
+					WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectCommit()
+			},
+			expectError: true,
+		},
+	}
 
-	repo := NewChannelRepository(db)
-	channelID := "C123456"
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gormDB, mock := setupMockDB(t)
+			sqlDB, _ := gormDB.DB()
+			defer closeMockDB(t, sqlDB, mock)
+			repo := NewChannelRepository(gormDB)
 
-	mock.ExpectExec("DELETE FROM channel_configs WHERE channel_id").
-		WithArgs(channelID).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+			tt.mockSetup(mock, tt.channelID)
 
-	err = repo.Delete(channelID)
+			err := repo.Delete(tt.channelID)
 
-	assert.NoError(t, err)
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestChannelRepositoryImpl_Delete_NotFound(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := NewChannelRepository(db)
-	channelID := "C999999"
-
-	mock.ExpectExec("DELETE FROM channel_configs WHERE channel_id").
-		WithArgs(channelID).
-		WillReturnResult(sqlmock.NewResult(0, 0))
-
-	err = repo.Delete(channelID)
-
-	assert.Error(t, err)
-	assert.NoError(t, mock.ExpectationsWereMet())
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestChannelRepositoryImpl_GetAll(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := NewChannelRepository(db)
 	now := time.Now()
+	tests := []struct {
+		name          string
+		mockSetup     func(sqlmock.Sqlmock, time.Time)
+		expectedCount int
+		validateResults func(*testing.T, []*model.ChannelConfig)
+	}{
+		{
+			name: "get multiple configs",
+			mockSetup: func(mock sqlmock.Sqlmock, now time.Time) {
+				rows := sqlmock.NewRows([]string{"id", "channel_id", "auto_translate", "source_languages", "target_language", "enabled", "created_at", "updated_at"}).
+					AddRow("test-1", "C123456", true, `["English"]`, "Vietnamese", true, now, now).
+					AddRow("test-2", "C789012", true, `["French"]`, "Spanish", true, now, now)
+				mock.ExpectQuery("SELECT \\* FROM `channel_configs` ORDER BY created_at DESC").
+					WillReturnRows(rows)
+			},
+			expectedCount: 2,
+			validateResults: func(t *testing.T, results []*model.ChannelConfig) {
+				assert.Equal(t, "C123456", results[0].ChannelID)
+				assert.Equal(t, "C789012", results[1].ChannelID)
+			},
+		},
+		{
+			name: "get empty list",
+			mockSetup: func(mock sqlmock.Sqlmock, now time.Time) {
+				rows := sqlmock.NewRows([]string{"id", "channel_id", "auto_translate", "source_languages", "target_language", "enabled", "created_at", "updated_at"})
+				mock.ExpectQuery("SELECT \\* FROM `channel_configs` ORDER BY created_at DESC").
+					WillReturnRows(rows)
+			},
+			expectedCount: 0,
+			validateResults: func(t *testing.T, results []*model.ChannelConfig) {
+			},
+		},
+	}
 
-	rows := sqlmock.NewRows([]string{
-		"id", "channel_id", "auto_translate", "source_languages",
-		"target_language", "enabled", "created_at", "updated_at",
-	}).AddRow(
-		"1", "C123456", true, "English",
-		"Vietnamese", true, now, now,
-	).AddRow(
-		"2", "C789012", true, "French",
-		"Spanish", true, now, now,
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gormDB, mock := setupMockDB(t)
+			sqlDB, _ := gormDB.DB()
+			defer closeMockDB(t, sqlDB, mock)
+			repo := NewChannelRepository(gormDB)
 
-	mock.ExpectQuery("SELECT (.+) FROM channel_configs").
-		WillReturnRows(rows)
+			tt.mockSetup(mock, now)
 
-	results, err := repo.GetAll()
+			results, err := repo.GetAll()
 
-	assert.NoError(t, err)
-	assert.Len(t, results, 2)
-	assert.Equal(t, "C123456", results[0].ChannelID)
-	assert.Equal(t, "C789012", results[1].ChannelID)
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestChannelRepositoryImpl_GetAll_Empty(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := NewChannelRepository(db)
-
-	rows := sqlmock.NewRows([]string{
-		"id", "channel_id", "auto_translate", "source_languages",
-		"target_language", "enabled", "created_at", "updated_at",
-	})
-
-	mock.ExpectQuery("SELECT (.+) FROM channel_configs").
-		WillReturnRows(rows)
-
-	results, err := repo.GetAll()
-
-	assert.NoError(t, err)
-	assert.Len(t, results, 0)
-	assert.NoError(t, mock.ExpectationsWereMet())
+			assert.NoError(t, err)
+			assert.Len(t, results, tt.expectedCount)
+			tt.validateResults(t, results)
+		})
+	}
 }

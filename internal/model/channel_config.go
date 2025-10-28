@@ -1,14 +1,20 @@
 package model
 
-import "time"
+import (
+	"time"
+)
 
 type ChannelConfig struct {
-	ID               string
-	ChannelID        string
-	AutoTranslate    bool
-	SourceLanguages  []string
-	TargetLanguage   string
-	Enabled          bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID              string
+	ChannelID       string
+	AutoTranslate   bool
+	SourceLanguages string
+	TargetLanguage  string
+	Enabled         bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+func (ChannelConfig) TableName() string {
+	return "channel_configs"
 }
