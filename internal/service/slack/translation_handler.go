@@ -11,11 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type Translator interface {
-	Translate(text, sourceLanguage, targetLanguage string) (string, error)
-	DetectLanguage(text string) (string, error)
-}
-
 type TranslationHandler struct {
 	translationUseCase *svc.TranslationUseCase
 	slackClient        *SlackClient

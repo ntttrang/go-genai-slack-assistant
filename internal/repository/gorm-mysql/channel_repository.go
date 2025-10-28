@@ -1,25 +1,20 @@
-package repository
+package gormmysql
 
 import (
 	"database/sql"
 	"fmt"
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
 )
 
-type ChannelRepository interface {
-	Save(config *model.ChannelConfig) error
-	GetByChannelID(channelID string) (*model.ChannelConfig, error)
-	Update(config *model.ChannelConfig) error
-	Delete(channelID string) error
-	GetAll() ([]*model.ChannelConfig, error)
-}
-
+// ChannelRepositoryImpl implements service.ChannelRepository interface
 type ChannelRepositoryImpl struct {
 	db *sql.DB
 }
 
-func NewChannelRepository(db *sql.DB) ChannelRepository {
+// NewChannelRepository creates a new channel repository instance
+func NewChannelRepository(db *sql.DB) service.ChannelRepository {
 	return &ChannelRepositoryImpl{db: db}
 }
 

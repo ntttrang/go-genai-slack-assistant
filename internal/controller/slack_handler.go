@@ -12,11 +12,11 @@ import (
 )
 
 type SlackWebhookHandler struct {
-	eventProcessor *slack.EventProcessor
+	eventProcessor slack.EventProcessor
 	logger         *zap.Logger
 }
 
-func NewSlackWebhookHandler(eventProcessor *slack.EventProcessor, logger *zap.Logger) *SlackWebhookHandler {
+func NewSlackWebhookHandler(eventProcessor slack.EventProcessor, logger *zap.Logger) *SlackWebhookHandler {
 	return &SlackWebhookHandler{
 		eventProcessor: eventProcessor,
 		logger:         logger,
