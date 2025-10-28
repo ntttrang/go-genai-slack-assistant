@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type Config struct {
 	Slack       SlackConfig
 	Gemini      GeminiConfig
 	Application ApplicationConfig
+	Security    SecurityConfig
 }
 
 // ServerConfig holds HTTP server configuration
@@ -63,6 +65,15 @@ type ApplicationConfig struct {
 	MaxMessageLength          int
 }
 
+// SecurityConfig holds security configuration
+type SecurityConfig struct {
+	MaxInputLength        int  `env:"MAX_INPUT_LENGTH"`
+	EnableInputValidation bool `env:"ENABLE_INPUT_VALIDATION"`
+	BlockHighThreat       bool `env:"BLOCK_HIGH_THREAT"`
+	LogSuspiciousActivity bool `env:"LOG_SUSPICIOUS_ACTIVITY"`
+	MaxOutputLength       int  `env:"MAX_OUTPUT_LENGTH"`
+}
+
 // Load reads configuration from environment variables with default values
 func Load() (*Config, error) {
 	config := &Config{
@@ -99,6 +110,13 @@ func Load() (*Config, error) {
 			RateLimitPerUser:          getEnvInt("RATE_LIMIT_PER_USER", 10),
 			RateLimitPerChannel:       getEnvInt("RATE_LIMIT_PER_CHANNEL", 30),
 			MaxMessageLength:          getEnvInt("MAX_MESSAGE_LENGTH", 10240),
+		},
+		Security: SecurityConfig{
+			MaxInputLength:        getEnvInt("MAX_INPUT_LENGTH", 5000),
+			EnableInputValidation: getEnvBool("ENABLE_INPUT_VALIDATION", true),
+			BlockHighThreat:       getEnvBool("BLOCK_HIGH_THREAT", true),
+			LogSuspiciousActivity: getEnvBool("LOG_SUSPICIOUS_ACTIVITY", true),
+			MaxOutputLength:       getEnvInt("MAX_OUTPUT_LENGTH", 10000),
 		},
 	}
 
@@ -140,6 +158,19 @@ func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intVal, err := strconv.Atoi(value); err == nil {
 			return intVal
+		}
+	}
+	return defaultValue
+}
+
+// getEnvBool retrieves a boolean environment variable or returns a default value
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		switch strings.ToLower(value) {
+		case "true", "1", "yes":
+			return true
+		case "false", "0", "no":
+			return false
 		}
 	}
 	return defaultValue

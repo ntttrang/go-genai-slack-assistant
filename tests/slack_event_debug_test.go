@@ -6,9 +6,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/security"
 )
 
 // TestTranslationFlowEnglishToVietnamese tests the full translation scenario
@@ -37,8 +40,12 @@ func TestTranslationFlowEnglishToVietnamese(t *testing.T) {
 	// Mock cache set
 	mockCache.On("Set", mock.Anything, vietnameseTranslation, int64(86400)).Return(nil)
 
-	// Create translation use case
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+	// Create translation use case with security middleware
+	inputValidator := security.NewInputValidator(5000)
+	outputValidator := security.NewOutputValidator(10000)
+	logger := zap.NewNop()
+	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
+	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test: Translate English message
 	result, err := tu.Translate(request.Translation{
@@ -81,8 +88,12 @@ func TestTranslationFlowVietnameseToEnglish(t *testing.T) {
 	// Mock cache set
 	mockCache.On("Set", mock.Anything, englishTranslation, int64(86400)).Return(nil)
 
-	// Create translation use case
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+	// Create translation use case with security middleware
+	inputValidator := security.NewInputValidator(5000)
+	outputValidator := security.NewOutputValidator(10000)
+	logger := zap.NewNop()
+	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
+	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test: Translate Vietnamese message
 	result, err := tu.Translate(request.Translation{

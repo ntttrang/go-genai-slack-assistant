@@ -9,6 +9,7 @@ import (
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/response"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/translator"
 )
@@ -25,10 +26,11 @@ type TranslationRepository interface {
 var _ TranslationService = (*TranslationUseCase)(nil)
 
 type TranslationUseCase struct {
-	repo       TranslationRepository
-	cache      Cache
-	translator translator.Translator
-	cacheTTL   int64
+	repo               TranslationRepository
+	cache              Cache
+	translator         translator.Translator
+	cacheTTL           int64
+	securityMiddleware *middleware.SecurityMiddleware
 }
 
 func NewTranslationUseCase(
@@ -36,20 +38,31 @@ func NewTranslationUseCase(
 	cache Cache,
 	translator translator.Translator,
 	cacheTTL int64,
+	securityMiddleware *middleware.SecurityMiddleware,
 ) *TranslationUseCase {
 	return &TranslationUseCase{
-		repo:       repo,
-		cache:      cache,
-		translator: translator,
-		cacheTTL:   cacheTTL,
+		repo:               repo,
+		cache:              cache,
+		translator:         translator,
+		cacheTTL:           cacheTTL,
+		securityMiddleware: securityMiddleware,
 	}
 }
 
 func (tu *TranslationUseCase) Translate(req request.Translation) (response.Translation, error) {
-	hash := tu.generateHash(req.Text, req.SourceLanguage, req.TargetLanguage)
+	// 1. Validate input
+	inputValidation, err := tu.securityMiddleware.ValidateInput(req.Text)
+	if err != nil {
+		return response.Translation{}, fmt.Errorf("input validation failed: %w", err)
+	}
+
+	sanitizedText := inputValidation.SanitizedText
+
+	// 2. Generate hash with sanitized text
+	hash := tu.generateHash(sanitizedText, req.SourceLanguage, req.TargetLanguage)
 	cacheKey := fmt.Sprintf("translation:%s", hash)
 
-	// Try to get from cache
+	// 3. Try to get from cache
 	cachedResult, err := tu.cache.Get(cacheKey)
 	if err == nil && cachedResult != "" {
 		return response.Translation{
@@ -60,7 +73,7 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 		}, nil
 	}
 
-	// Try to get from database
+	// 4. Try to get from database
 	existingTranslation, err := tu.repo.GetByHash(hash)
 	if err == nil && existingTranslation != nil {
 		tu.cache.Set(cacheKey, existingTranslation.TranslatedText, tu.cacheTTL)
@@ -72,16 +85,24 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 		}, nil
 	}
 
-	// Call AI to translate
-	translatedText, err := tu.translator.Translate(req.Text, req.SourceLanguage, req.TargetLanguage)
+	// 5. Call AI to translate with sanitized text
+	translatedText, err := tu.translator.Translate(sanitizedText, req.SourceLanguage, req.TargetLanguage)
 	if err != nil {
 		return response.Translation{}, fmt.Errorf("translation failed: %w", err)
 	}
 
-	// Store in database
+	// 6. Validate output
+	outputValidation, err := tu.securityMiddleware.ValidateOutput(translatedText, sanitizedText)
+	if err != nil {
+		return response.Translation{}, fmt.Errorf("output validation failed: %w", err)
+	}
+
+	translatedText = outputValidation.CleanedText
+
+	// 7. Store in database
 	translation := &model.Translation{
 		ID:             generateID(),
-		SourceText:     req.Text,
+		SourceText:     sanitizedText,
 		SourceLanguage: req.SourceLanguage,
 		TargetLanguage: req.TargetLanguage,
 		TranslatedText: translatedText,
@@ -94,7 +115,7 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 		return response.Translation{}, fmt.Errorf("failed to save translation: %w", err)
 	}
 
-	// Store in cache
+	// 8. Store in cache
 	tu.cache.Set(cacheKey, translatedText, tu.cacheTTL)
 
 	return response.Translation{

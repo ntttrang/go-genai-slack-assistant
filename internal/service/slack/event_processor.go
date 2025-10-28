@@ -177,6 +177,22 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 
 	result, err := ep.translationUseCase.Translate(translationReq)
 	if err != nil {
+		if strings.Contains(err.Error(), "Delimiter tag injection") || strings.Contains(err.Error(), "input validation failed") {
+			ep.logger.Warn("Security validation failed for message",
+				zap.Error(err),
+				zap.String("channel_id", channelID),
+				zap.String("user_id", userID))
+
+			errorMsg := "Sorry, I can't support this language. Something wrong in your text"
+			_, _, postErr := ep.slackClient.PostMessage(channelID, errorMsg, ts)
+			if postErr != nil {
+				ep.logger.Error("Failed to post security error message",
+					zap.Error(postErr),
+					zap.String("channel_id", channelID))
+			}
+			return
+		}
+
 		ep.logger.Error("Failed to translate message",
 			zap.Error(err),
 			zap.String("text", text))
@@ -327,6 +343,21 @@ func (ep *eventProcessorImpl) handleReactionEvent(ctx context.Context, event map
 
 	result, err := ep.translationUseCase.Translate(translationReq)
 	if err != nil {
+		if strings.Contains(err.Error(), "Delimiter tag injection") || strings.Contains(err.Error(), "input validation failed") {
+			ep.logger.Warn("Security validation failed for reaction translation",
+				zap.Error(err),
+				zap.String("channel_id", channelID))
+
+			errorMsg := "Sorry, I can't support this language. Something wrong in your text"
+			_, _, postErr := ep.slackClient.PostMessage(channelID, errorMsg, messageTS)
+			if postErr != nil {
+				ep.logger.Error("Failed to post security error message",
+					zap.Error(postErr),
+					zap.String("channel_id", channelID))
+			}
+			return
+		}
+
 		ep.logger.Error("Failed to translate message from reaction",
 			zap.Error(err),
 			zap.String("text", message.Text))

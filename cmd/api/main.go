@@ -24,6 +24,7 @@ import (
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/config"
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/database"
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/metrics"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/security"
 )
 
 func main() {
@@ -101,9 +102,14 @@ func main() {
 	// Initialize translation repository (implements model.TranslationRepository interface)
 	translationRepo := gormmysql.NewTranslationRepository(db)
 
-	// Initialize translation use case (implements service.TranslationService interface)
+	// Initialize security components
+	inputValidator := security.NewInputValidator(cfg.Security.MaxInputLength)
+	outputValidator := security.NewOutputValidator(cfg.Security.MaxOutputLength)
+	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, log, cfg.Security.BlockHighThreat, cfg.Security.LogSuspiciousActivity)
+
+	// Initialize translation use case
 	cacheTTL := int64(cfg.Application.CacheTTLTranslation)
-	translationUseCase := service.NewTranslationUseCase(translationRepo, cacheInstance, geminiProvider, cacheTTL)
+	translationUseCase := service.NewTranslationUseCase(translationRepo, cacheInstance, geminiProvider, cacheTTL, securityMiddleware)
 
 	// Initialize Slack client
 	slackClient := slackservice.NewSlackClient(cfg.Slack.BotToken)
