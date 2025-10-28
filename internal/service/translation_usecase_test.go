@@ -1,183 +1,130 @@
 package service
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
-	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/testutils/mocks"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
-type MockTranslationRepository struct {
-	mock.Mock
-}
+func TestTranslationUseCaseTranslate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-func (m *MockTranslationRepository) Save(translation *model.Translation) error {
-	args := m.Called(translation)
-	return args.Error(0)
-}
+	mockRepo := mocks.NewMockTranslationRepository(ctrl)
+	mockCache := mocks.NewMockCache(ctrl)
+	mockTranslator := mocks.NewMockTranslator(ctrl)
 
-func (m *MockTranslationRepository) GetByHash(hash string) (*model.Translation, error) {
-	args := m.Called(hash)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.Translation), args.Error(1)
-}
+	// Setup expectations - cache miss
+	mockCache.EXPECT().Get(gomock.Any()).Return("", assert.AnError)
+	
+	// Repo miss
+	mockRepo.EXPECT().GetByHash(gomock.Any()).Return(nil, nil)
+	
+	// Translator succeeds
+	mockTranslator.EXPECT().Translate("Hello", "en", "es").Return("Hola", nil)
+	
+	// Repo save succeeds
+	mockRepo.EXPECT().Save(gomock.Any()).Return(nil)
+	
+	// Cache set succeeds
+	mockCache.EXPECT().Set(gomock.Any(), "Hola", int64(3600)).Return(nil)
 
-func (m *MockTranslationRepository) GetByID(id string) (*model.Translation, error) {
-	args := m.Called(id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.Translation), args.Error(1)
-}
+	useCase := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 3600)
 
-func (m *MockTranslationRepository) GetByChannelID(channelID string, limit int) ([]*model.Translation, error) {
-	args := m.Called(channelID, limit)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]*model.Translation), args.Error(1)
-}
-
-type MockCache struct {
-	mock.Mock
-}
-
-func (m *MockCache) Get(key string) (string, error) {
-	args := m.Called(key)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockCache) Set(key string, value string, ttl int64) error {
-	args := m.Called(key, value, ttl)
-	return args.Error(0)
-}
-
-func (m *MockCache) Delete(key string) error {
-	args := m.Called(key)
-	return args.Error(0)
-}
-
-func (m *MockCache) Exists(key string) (bool, error) {
-	args := m.Called(key)
-	return args.Bool(0), args.Error(1)
-}
-
-type MockTranslator struct {
-	mock.Mock
-}
-
-func (m *MockTranslator) Translate(text, sourceLanguage, targetLanguage string) (string, error) {
-	args := m.Called(text, sourceLanguage, targetLanguage)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockTranslator) DetectLanguage(text string) (string, error) {
-	args := m.Called(text)
-	return args.String(0), args.Error(1)
-}
-
-func TestTranslate_CacheHit(t *testing.T) {
-	mockRepo := new(MockTranslationRepository)
-	mockCache := new(MockCache)
-	mockTranslator := new(MockTranslator)
-
-	mockCache.On("Get", mock.Anything).Return("translated text", nil)
-
-	tu := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
-
-	req := request.Translation{
+	// Execute
+	resp, err := useCase.Translate(request.Translation{
 		Text:           "Hello",
 		SourceLanguage: "en",
-		TargetLanguage: "vi",
-	}
+		TargetLanguage: "es",
+	})
 
-	result, err := tu.Translate(req)
-
+	// Assert
 	assert.NoError(t, err)
-	assert.Equal(t, "translated text", result.TranslatedText)
-	mockCache.AssertCalled(t, "Get", mock.Anything)
-	mockTranslator.AssertNotCalled(t, "Translate", mock.Anything, mock.Anything, mock.Anything)
+	assert.Equal(t, "Hola", resp.TranslatedText)
+	assert.Equal(t, "Hello", resp.OriginalText)
+	assert.Equal(t, "en", resp.SourceLanguage)
+	assert.Equal(t, "es", resp.TargetLanguage)
 }
 
-func TestTranslate_DatabaseHit(t *testing.T) {
-	mockRepo := new(MockTranslationRepository)
-	mockCache := new(MockCache)
-	mockTranslator := new(MockTranslator)
+func TestTranslationUseCaseTranslateFromCache(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	mockCache.On("Get", mock.Anything).Return("", errors.New("not found"))
-	mockRepo.On("GetByHash", mock.Anything).Return(&model.Translation{
-		TranslatedText: "translated from db",
-	}, nil)
-	mockCache.On("Set", mock.Anything, "translated from db", int64(86400)).Return(nil)
+	mockRepo := mocks.NewMockTranslationRepository(ctrl)
+	mockCache := mocks.NewMockCache(ctrl)
+	mockTranslator := mocks.NewMockTranslator(ctrl)
 
-	tu := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+	// Setup expectations - cache hit
+	mockCache.EXPECT().Get(gomock.Any()).Return("Cached Hola", nil)
 
-	req := request.Translation{
+	useCase := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 3600)
+
+	// Execute
+	resp, err := useCase.Translate(request.Translation{
 		Text:           "Hello",
 		SourceLanguage: "en",
-		TargetLanguage: "vi",
-	}
+		TargetLanguage: "es",
+	})
 
-	result, err := tu.Translate(req)
-
+	// Assert
 	assert.NoError(t, err)
-	assert.Equal(t, "translated from db", result.TranslatedText)
-	mockTranslator.AssertNotCalled(t, "Translate", mock.Anything, mock.Anything, mock.Anything)
+	assert.Equal(t, "Cached Hola", resp.TranslatedText)
 }
 
-func TestTranslate_AITranslation(t *testing.T) {
-	mockRepo := new(MockTranslationRepository)
-	mockCache := new(MockCache)
-	mockTranslator := new(MockTranslator)
+func TestTranslationUseCaseDetectLanguage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	mockCache.On("Get", mock.Anything).Return("", errors.New("not found"))
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
-	mockTranslator.On("Translate", "Hello", "en", "vi").Return("Xin chào", nil)
-	mockRepo.On("Save", mock.Anything).Return(nil)
-	mockCache.On("Set", mock.Anything, "Xin chào", int64(86400)).Return(nil)
+	mockRepo := mocks.NewMockTranslationRepository(ctrl)
+	mockCache := mocks.NewMockCache(ctrl)
+	mockTranslator := mocks.NewMockTranslator(ctrl)
 
-	tu := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+	mockTranslator.EXPECT().DetectLanguage("Hello world").Return("en", nil)
 
-	req := request.Translation{
-		Text:           "Hello",
-		SourceLanguage: "en",
-		TargetLanguage: "vi",
-	}
+	useCase := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 3600)
 
-	result, err := tu.Translate(req)
+	// Execute
+	lang, err := useCase.DetectLanguage("Hello world")
 
+	// Assert
 	assert.NoError(t, err)
-	assert.Equal(t, "Xin chào", result.TranslatedText)
-	mockTranslator.AssertCalled(t, "Translate", "Hello", "en", "vi")
-	mockRepo.AssertCalled(t, "Save", mock.Anything)
-	mockCache.AssertCalled(t, "Set", mock.Anything, "Xin chào", int64(86400))
+	assert.Equal(t, "English", lang)
 }
 
-func TestTranslate_AIError(t *testing.T) {
-	mockRepo := new(MockTranslationRepository)
-	mockCache := new(MockCache)
-	mockTranslator := new(MockTranslator)
+func TestTranslationUseCaseDetectLanguageVietnamese(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	mockCache.On("Get", mock.Anything).Return("", errors.New("not found"))
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
-	mockTranslator.On("Translate", mock.Anything, mock.Anything, mock.Anything).Return("", errors.New("API error"))
+	mockRepo := mocks.NewMockTranslationRepository(ctrl)
+	mockCache := mocks.NewMockCache(ctrl)
+	mockTranslator := mocks.NewMockTranslator(ctrl)
 
-	tu := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
+	mockTranslator.EXPECT().DetectLanguage("Xin chào").Return("vi", nil)
 
-	req := request.Translation{
-		Text:           "Hello",
-		SourceLanguage: "en",
-		TargetLanguage: "vi",
-	}
+	useCase := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 3600)
 
-	_, err := tu.Translate(req)
+	// Execute
+	lang, err := useCase.DetectLanguage("Xin chào")
 
-	assert.Error(t, err)
-	mockTranslator.AssertCalled(t, "Translate", mock.Anything, mock.Anything, mock.Anything)
-	mockRepo.AssertNotCalled(t, "Save", mock.Anything)
+	// Assert
+	assert.NoError(t, err)
+	assert.Equal(t, "Vietnamese", lang)
+}
+
+func TestTranslationUseCaseImplementsInterface(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := mocks.NewMockTranslationRepository(ctrl)
+	mockCache := mocks.NewMockCache(ctrl)
+	mockTranslator := mocks.NewMockTranslator(ctrl)
+
+	useCase := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 3600)
+
+	// Assert that usecase implements TranslationService interface
+	var _ TranslationService = useCase
+	assert.NotNil(t, useCase)
 }

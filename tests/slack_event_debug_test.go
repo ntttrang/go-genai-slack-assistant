@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/request"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
 )
 
@@ -19,9 +20,6 @@ func TestTranslationFlowEnglishToVietnamese(t *testing.T) {
 
 	englishMessage := "Hello, How are you?"
 	vietnameseTranslation := "Xin chào bạn khỏe không?"
-
-	// Mock language detection
-	mockTranslator.On("DetectLanguage", englishMessage).Return("en", nil)
 
 	// Mock translation
 	mockTranslator.On("Translate", englishMessage, "English", "Vietnamese").
@@ -43,17 +41,7 @@ func TestTranslationFlowEnglishToVietnamese(t *testing.T) {
 	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
 
 	// Test: Translate English message
-	translator := tu.GetTranslator()
-	detectedLang, err := translator.DetectLanguage(englishMessage)
-	assert.NoError(t, err)
-	assert.Equal(t, "en", detectedLang)
-
-	// Translate
-	result, err := tu.Translate(struct {
-		Text           string
-		SourceLanguage string
-		TargetLanguage string
-	}{
+	result, err := tu.Translate(request.Translation{
 		Text:           englishMessage,
 		SourceLanguage: "English",
 		TargetLanguage: "Vietnamese",
@@ -77,9 +65,6 @@ func TestTranslationFlowVietnameseToEnglish(t *testing.T) {
 	vietnameseMessage := "Xin chào bạn khỏe không?"
 	englishTranslation := "Hello, how are you?"
 
-	// Mock language detection
-	mockTranslator.On("DetectLanguage", vietnameseMessage).Return("vi", nil)
-
 	// Mock translation
 	mockTranslator.On("Translate", vietnameseMessage, "Vietnamese", "English").
 		Return(englishTranslation, nil)
@@ -100,17 +85,7 @@ func TestTranslationFlowVietnameseToEnglish(t *testing.T) {
 	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400)
 
 	// Test: Translate Vietnamese message
-	translator := tu.GetTranslator()
-	detectedLang, err := translator.DetectLanguage(vietnameseMessage)
-	assert.NoError(t, err)
-	assert.Equal(t, "vi", detectedLang)
-
-	// Translate
-	result, err := tu.Translate(struct {
-		Text           string
-		SourceLanguage string
-		TargetLanguage string
-	}{
+	result, err := tu.Translate(request.Translation{
 		Text:           vietnameseMessage,
 		SourceLanguage: "Vietnamese",
 		TargetLanguage: "English",

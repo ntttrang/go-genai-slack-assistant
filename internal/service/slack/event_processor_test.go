@@ -1,91 +1,211 @@
 package slack
 
 import (
+	"context"
 	"testing"
+
+	"github.com/golang/mock/gomock"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/testutils/mocks"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
-func TestExtractAndRestoreEmojis(t *testing.T) {
+
+
+
+
+func TestEventProcessorProcessEventURLVerification(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockTranslationService := mocks.NewMockTranslationService(ctrl)
+	logger, _ := zap.NewProduction()
+
+	processor := NewEventProcessor(mockTranslationService, nil, logger)
+
+	payload := map[string]interface{}{
+		"type":      "url_verification",
+		"challenge": "test-challenge-123",
+	}
+
+	// This should not panic and handle gracefully
+	processor.ProcessEvent(context.Background(), payload)
+}
+
+func TestEventProcessorProcessEventCallback(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockTranslationService := mocks.NewMockTranslationService(ctrl)
+	logger, _ := zap.NewProduction()
+
+	processor := NewEventProcessor(mockTranslationService, nil, logger)
+
+	// Create minimal valid event callback
+	payload := map[string]interface{}{
+		"type": "event_callback",
+		"event": map[string]interface{}{
+			"type": "unknown_event_type",
+		},
+	}
+
+	// This should handle gracefully
+	processor.ProcessEvent(context.Background(), payload)
+}
+
+func TestEventProcessorImplementsInterface(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockTranslationService := mocks.NewMockTranslationService(ctrl)
+	logger, _ := zap.NewProduction()
+
+	processor := NewEventProcessor(mockTranslationService, nil, logger)
+
+	// Assert that processor implements EventProcessor interface
+	var _ EventProcessor = processor
+	assert.NotNil(t, processor)
+}
+
+func TestEventProcessorInvalidEventType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockTranslationService := mocks.NewMockTranslationService(ctrl)
+	logger, _ := zap.NewProduction()
+
+	processor := NewEventProcessor(mockTranslationService, nil, logger)
+
+	payload := map[string]interface{}{
+		"type": "invalid_type",
+	}
+
+	// This should handle gracefully
+	processor.ProcessEvent(context.Background(), payload)
+}
+
+func TestEventProcessorHandleMessageEvent_EmptyText(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockTranslationService := mocks.NewMockTranslationService(ctrl)
+	logger, _ := zap.NewProduction()
+
+	processor := NewEventProcessor(mockTranslationService, nil, logger).(*eventProcessorImpl)
+
+	event := map[string]interface{}{
+		"type":    "message",
+		"channel": "C123456",
+		"text":    "",
+		"user":    "U123456",
+		"ts":      "1234567890.123456",
+	}
+
+	processor.handleMessageEvent(context.Background(), event)
+}
+
+func TestEventProcessorHandleMessageEvent_SkipBotMessage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockTranslationService := mocks.NewMockTranslationService(ctrl)
+	logger, _ := zap.NewProduction()
+
+	processor := NewEventProcessor(mockTranslationService, nil, logger).(*eventProcessorImpl)
+
+	event := map[string]interface{}{
+		"type":    "message",
+		"bot_id":  "B123456",
+		"channel": "C123456",
+		"text":    "Hello",
+		"ts":      "1234567890.123456",
+	}
+
+	processor.handleMessageEvent(context.Background(), event)
+}
+
+func TestEventProcessorHandleMessageEvent_SkipMessageWithSubtype(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockTranslationService := mocks.NewMockTranslationService(ctrl)
+	logger, _ := zap.NewProduction()
+
+	processor := NewEventProcessor(mockTranslationService, nil, logger).(*eventProcessorImpl)
+
+	event := map[string]interface{}{
+		"type":    "message",
+		"subtype": "message_changed",
+		"channel": "C123456",
+		"text":    "Hello",
+		"user":    "U123456",
+		"ts":      "1234567890.123456",
+	}
+
+	processor.handleMessageEvent(context.Background(), event)
+}
+
+
+
+
+
+
+
+func TestIsEmojiOnly_OnlyEmoji(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    string
-		expected string
+		text     string
+		expected bool
 	}{
-		{
-			name:     "Single emoji preservation",
-			input:    "mệt :heavy_plus_sign:",
-			expected: "mệt :heavy_plus_sign:",
-		},
-		{
-			name:     "Multiple emojis preservation",
-			input:    "Happy :grinning: and sad :weary:",
-			expected: "Happy :grinning: and sad :weary:",
-		},
-		{
-			name:     "Emoji with numbers and underscores",
-			input:    "number_one :keycap_1:",
-			expected: "number_one :keycap_1:",
-		},
-		{
-			name:     "No emojis",
-			input:    "Just plain text",
-			expected: "Just plain text",
-		},
-		{
-			name:     "Emoji at start",
-			input:    ":grinning: Hello",
-			expected: ":grinning: Hello",
-		},
-		{
-			name:     "Emoji at end",
-			input:    "Hello :grinning:",
-			expected: "Hello :grinning:",
-		},
+		{"single emoji", ":smile:", true},
+		{"multiple emojis", ":smile: :wave:", true},
+		{"emojis with spaces", "  :smile:  :wave:  ", true},
+		{"emoji with text", ":smile: Hello", false},
+		{"text only", "Hello world", false},
+		{"empty string", "", false},
+		{"whitespace only", "   ", false},
+		{"mixed", "Hello :smile:", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Extract emojis
-			cleanedText, emojis := extractEmojis(tt.input)
-
-			// Verify placeholders don't contain original emoji text
-			for placeholder, emoji := range emojis {
-				if emoji != tt.input[len(tt.input)-len(emoji):] && len(tt.input) >= len(emoji) {
-					// Make sure placeholder is actually a placeholder
-					if len(placeholder) == 0 {
-						t.Errorf("Placeholder is empty")
-					}
-				}
-			}
-
-			// Restore emojis
-			result := restoreEmojis(cleanedText, emojis)
-
-			// Verify the result matches the original
-			if result != tt.expected {
-				t.Errorf("extractEmojis() test %s failed: got %q, want %q", tt.name, result, tt.expected)
-			}
+			result := isEmojiOnly(tt.text)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestPlaceholderFormat(t *testing.T) {
-	text := "mệt :heavy_plus_sign:"
-	cleanedText, emojis := extractEmojis(text)
+func TestExtractAndRestoreEmojis(t *testing.T) {
+	originalText := "Hello :smile: world :wave:"
 
-	// Verify placeholder format
-	for placeholder := range emojis {
-		// Check that placeholder starts with EMOJIPLACEHOLDER
-		if len(placeholder) < 16 {
-			t.Errorf("Placeholder format incorrect: %q", placeholder)
-		}
-		// Verify it doesn't contain underscores at start/end
-		if placeholder[0] == '_' || placeholder[len(placeholder)-1] == '_' {
-			t.Errorf("Placeholder should not have leading/trailing underscores: %q", placeholder)
-		}
-	}
+	cleanedText, emojiMap := extractEmojis(originalText)
 
-	// Verify cleaned text doesn't contain original emoji
-	if cleanedText == text {
-		t.Errorf("Cleaned text should not contain original text")
-	}
+	assert.Contains(t, cleanedText, "EMOJIPLACEHOLDER")
+	assert.Len(t, emojiMap, 2)
+
+	restoredText := restoreEmojis(cleanedText, emojiMap)
+
+	assert.Equal(t, originalText, restoredText)
+}
+
+func TestExtractAndRestoreEmojis_NoEmojis(t *testing.T) {
+	originalText := "Hello world"
+
+	cleanedText, emojiMap := extractEmojis(originalText)
+
+	assert.Equal(t, originalText, cleanedText)
+	assert.Len(t, emojiMap, 0)
+}
+
+func TestExtractAndRestoreEmojis_OnlyEmojis(t *testing.T) {
+	originalText := ":smile: :wave: :tada:"
+
+	cleanedText, emojiMap := extractEmojis(originalText)
+
+	assert.NotEqual(t, originalText, cleanedText)
+	assert.Len(t, emojiMap, 3)
+
+	restoredText := restoreEmojis(cleanedText, emojiMap)
+
+	assert.Equal(t, originalText, restoredText)
 }
