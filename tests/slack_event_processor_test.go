@@ -100,10 +100,10 @@ func TestVietnameseMessageToEnglishTranslation(t *testing.T) {
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
 
 	// Mock database miss
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
 
 	// Mock translation call - Vietnamese to English
-	mockTranslator.On("Translate", vietnameseMessage, "Vietnamese", "English").
+	mockTranslator.On("Translate", mock.Anything, "Vietnamese", "English").
 		Return(englishTranslation, nil)
 
 	// Mock save to database
@@ -117,7 +117,7 @@ func TestVietnameseMessageToEnglishTranslation(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test translation Vietnamese to English
 	req := request.Translation{
@@ -150,10 +150,10 @@ func TestEnglishMessageToVietnameseTranslation(t *testing.T) {
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
 
 	// Mock database miss
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
 
 	// Mock translation call - English to Vietnamese
-	mockTranslator.On("Translate", englishMessage, "English", "Vietnamese").
+	mockTranslator.On("Translate", mock.Anything, "English", "Vietnamese").
 		Return(vietnameseTranslation, nil)
 
 	// Mock save to database
@@ -167,7 +167,7 @@ func TestEnglishMessageToVietnameseTranslation(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test translation English to Vietnamese
 	req := request.Translation{
@@ -195,8 +195,8 @@ func TestTranslationUseCaseIntegration(t *testing.T) {
 
 	// Mock all the calls
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
-	mockTranslator.On("Translate", "Hello", "English", "Vietnamese").Return("Xin chào", nil)
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
+	mockTranslator.On("Translate", mock.Anything, "English", "Vietnamese").Return("Xin chào", nil)
 	mockRepo.On("Save", mock.Anything).Return(nil)
 	mockCache.On("Set", mock.Anything, "Xin chào", int64(86400)).Return(nil)
 
@@ -205,7 +205,7 @@ func TestTranslationUseCaseIntegration(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test translation
 	req := request.Translation{

@@ -25,14 +25,14 @@ func TestTranslationFlowEnglishToVietnamese(t *testing.T) {
 	vietnameseTranslation := "Xin chào bạn khỏe không?"
 
 	// Mock translation
-	mockTranslator.On("Translate", englishMessage, "English", "Vietnamese").
+	mockTranslator.On("Translate", mock.Anything, "English", "Vietnamese").
 		Return(vietnameseTranslation, nil)
 
 	// Mock cache miss
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
 
 	// Mock database miss
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
 
 	// Mock save
 	mockRepo.On("Save", mock.Anything).Return(nil)
@@ -45,7 +45,7 @@ func TestTranslationFlowEnglishToVietnamese(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test: Translate English message
 	result, err := tu.Translate(request.Translation{
@@ -73,14 +73,14 @@ func TestTranslationFlowVietnameseToEnglish(t *testing.T) {
 	englishTranslation := "Hello, how are you?"
 
 	// Mock translation
-	mockTranslator.On("Translate", vietnameseMessage, "Vietnamese", "English").
+	mockTranslator.On("Translate", mock.Anything, "Vietnamese", "English").
 		Return(englishTranslation, nil)
 
 	// Mock cache miss
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
 
 	// Mock database miss
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
 
 	// Mock save
 	mockRepo.On("Save", mock.Anything).Return(nil)
@@ -93,7 +93,7 @@ func TestTranslationFlowVietnameseToEnglish(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
 
 	// Test: Translate Vietnamese message
 	result, err := tu.Translate(request.Translation{

@@ -11,6 +11,7 @@ import (
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/response"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
+	"go.uber.org/zap"
 )
 
 type Translator interface {
@@ -27,9 +28,8 @@ type TranslationRepository interface {
 	GetByChannelID(channelID string, limit int) ([]*model.Translation, error)
 }
 
-var _ TranslationService = (*TranslationUseCase)(nil)
-
 type TranslationUseCase struct {
+	logger             *zap.Logger
 	repo               TranslationRepository
 	cache              Cache
 	translator         Translator
@@ -38,6 +38,7 @@ type TranslationUseCase struct {
 }
 
 func NewTranslationUseCase(
+	logger *zap.Logger,
 	repo TranslationRepository,
 	cache Cache,
 	translator Translator,
@@ -45,6 +46,7 @@ func NewTranslationUseCase(
 	securityMiddleware *middleware.SecurityMiddleware,
 ) *TranslationUseCase {
 	return &TranslationUseCase{
+		logger:             logger,
 		repo:               repo,
 		cache:              cache,
 		translator:         translator,
@@ -90,10 +92,12 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 	}
 
 	// 5. Call AI to translate with sanitized text
+	tu.logger.Info("[Start] Call to AI provider to translate")
 	translatedText, err := tu.translator.Translate(sanitizedText, req.SourceLanguage, req.TargetLanguage)
 	if err != nil {
 		return response.Translation{}, fmt.Errorf("translation failed: %w", err)
 	}
+	tu.logger.Info("[End] Call to AI provider to translate")
 
 	// 6. Validate output
 	outputValidation, err := tu.securityMiddleware.ValidateOutput(translatedText, sanitizedText)

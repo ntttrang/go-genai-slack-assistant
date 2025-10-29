@@ -84,7 +84,7 @@ func TestTranslationUseCase_Translate(t *testing.T) {
 			},
 			cacheTTL: 86400,
 			setupMocks: func(cache *mocks.MockCache, repo *mocks.MockTranslationRepository, translator *mocks.MockTranslator) {
-				cache.EXPECT().Get(gomock.Any()).Return("", errors.New("not found"))
+				cache.EXPECT().Get(gomock.Any()).Return("", errors.New("record not found"))
 				repo.EXPECT().GetByHash(gomock.Any()).Return(nil, nil)
 				translator.EXPECT().Translate("Hello", "en", "vi").Return("Xin chào", nil)
 				repo.EXPECT().Save(gomock.Any()).Return(nil)
@@ -105,7 +105,7 @@ func TestTranslationUseCase_Translate(t *testing.T) {
 			},
 			cacheTTL: 86400,
 			setupMocks: func(cache *mocks.MockCache, repo *mocks.MockTranslationRepository, translator *mocks.MockTranslator) {
-				cache.EXPECT().Get(gomock.Any()).Return("", errors.New("not found"))
+				cache.EXPECT().Get(gomock.Any()).Return("", errors.New("record not found"))
 				repo.EXPECT().GetByHash(gomock.Any()).Return(nil, nil)
 				translator.EXPECT().Translate(gomock.Any(), gomock.Any(), gomock.Any()).Return("", errors.New("API error"))
 			},
@@ -143,7 +143,8 @@ func TestTranslationUseCase_Translate(t *testing.T) {
 			tt.setupMocks(mockCache, mockRepo, mockTranslator)
 
 			securityMiddleware := setupSecurityMiddleware()
-			useCase := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, tt.cacheTTL, securityMiddleware)
+			logger := zap.NewNop()
+			useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, tt.cacheTTL, securityMiddleware)
 
 			// Execute
 			resp, err := useCase.Translate(tt.input)
@@ -154,7 +155,7 @@ func TestTranslationUseCase_Translate(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedTranslated, resp.TranslatedText)
-				
+
 				if tt.validateResponse != nil {
 					tt.validateResponse(t, &resp)
 				}
@@ -226,7 +227,8 @@ func TestTranslationUseCase_DetectLanguage(t *testing.T) {
 			mockTranslator.EXPECT().DetectLanguage(tt.inputText).Return(tt.mockDetectedCode, tt.mockError)
 
 			securityMiddleware := setupSecurityMiddleware()
-			useCase := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 3600, securityMiddleware)
+			logger := zap.NewNop()
+			useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 3600, securityMiddleware)
 
 			// Execute
 			lang, err := useCase.DetectLanguage(tt.inputText)
@@ -251,7 +253,8 @@ func TestTranslationUseCase_ImplementsInterface(t *testing.T) {
 	mockTranslator := mocks.NewMockTranslator(ctrl)
 
 	securityMiddleware := setupSecurityMiddleware()
-	useCase := NewTranslationUseCase(mockRepo, mockCache, mockTranslator, 3600, securityMiddleware)
+	logger := zap.NewNop()
+	useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 3600, securityMiddleware)
 
 	// Assert that usecase implements TranslationService interface
 	var _ TranslationService = useCase
