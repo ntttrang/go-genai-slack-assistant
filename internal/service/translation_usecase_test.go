@@ -84,7 +84,7 @@ func TestTranslationUseCase_Translate(t *testing.T) {
 			},
 			cacheTTL: 86400,
 			setupMocks: func(cache *mocks.MockCache, repo *mocks.MockTranslationRepository, translator *mocks.MockTranslator) {
-				cache.EXPECT().Get(gomock.Any()).Return("", errors.New("not found"))
+				cache.EXPECT().Get(gomock.Any()).Return("", errors.New("record not found"))
 				repo.EXPECT().GetByHash(gomock.Any()).Return(nil, nil)
 				translator.EXPECT().Translate("Hello", "en", "vi").Return("Xin chào", nil)
 				repo.EXPECT().Save(gomock.Any()).Return(nil)
@@ -105,7 +105,7 @@ func TestTranslationUseCase_Translate(t *testing.T) {
 			},
 			cacheTTL: 86400,
 			setupMocks: func(cache *mocks.MockCache, repo *mocks.MockTranslationRepository, translator *mocks.MockTranslator) {
-				cache.EXPECT().Get(gomock.Any()).Return("", errors.New("not found"))
+				cache.EXPECT().Get(gomock.Any()).Return("", errors.New("record not found"))
 				repo.EXPECT().GetByHash(gomock.Any()).Return(nil, nil)
 				translator.EXPECT().Translate(gomock.Any(), gomock.Any(), gomock.Any()).Return("", errors.New("API error"))
 			},
@@ -155,7 +155,7 @@ func TestTranslationUseCase_Translate(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedTranslated, resp.TranslatedText)
-				
+
 				if tt.validateResponse != nil {
 					tt.validateResponse(t, &resp)
 				}

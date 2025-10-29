@@ -100,7 +100,7 @@ func TestVietnameseMessageToEnglishTranslation(t *testing.T) {
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
 
 	// Mock database miss
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
 
 	// Mock translation call - Vietnamese to English
 	mockTranslator.On("Translate", mock.Anything, "Vietnamese", "English").
@@ -150,7 +150,7 @@ func TestEnglishMessageToVietnameseTranslation(t *testing.T) {
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
 
 	// Mock database miss
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
 
 	// Mock translation call - English to Vietnamese
 	mockTranslator.On("Translate", mock.Anything, "English", "Vietnamese").
@@ -195,7 +195,7 @@ func TestTranslationUseCaseIntegration(t *testing.T) {
 
 	// Mock all the calls
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
 	mockTranslator.On("Translate", mock.Anything, "English", "Vietnamese").Return("Xin chào", nil)
 	mockRepo.On("Save", mock.Anything).Return(nil)
 	mockCache.On("Set", mock.Anything, "Xin chào", int64(86400)).Return(nil)
