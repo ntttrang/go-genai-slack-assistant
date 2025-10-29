@@ -48,12 +48,21 @@ func (wp *WorkerPool) Enqueue(event *model.MessageEvent) {
 	// Deduplicate by event_id
 	if event.EventID != "" {
 		if _, exists := wp.seenEvents.LoadOrStore(event.EventID, true); exists {
-			wp.logger.Debug("Duplicate event detected, dropping",
+			wp.logger.Warn("Duplicate event detected, dropping (SKIPPED)",
 				zap.String("event_id", event.EventID),
 				zap.String("channel_id", event.ChannelID),
-				zap.String("message_ts", event.MessageTS))
+				zap.String("message_ts", event.MessageTS),
+				zap.String("user_id", event.UserID))
 			return
 		}
+		wp.logger.Debug("New event_id (ACCEPTED)",
+			zap.String("event_id", event.EventID),
+			zap.Uint64("sequence", event.Sequence))
+	} else {
+		wp.logger.Warn("Event with empty event_id detected",
+			zap.String("channel_id", event.ChannelID),
+			zap.String("message_ts", event.MessageTS),
+			zap.Uint64("sequence", event.Sequence))
 	}
 
 	queueKey := event.GetQueueKey()
@@ -113,17 +122,20 @@ func (wp *WorkerPool) worker(queueKey string, eventChan chan *model.MessageEvent
 			idleTimer.Reset(wp.idleTimeout)
 
 			// Process event synchronously (ensures ordering)
-			wp.logger.Debug("Processing event",
+			wp.logger.Info("Processing event (SEQUENTIAL)",
 				zap.String("queue_key", queueKey),
 				zap.String("message_ts", event.MessageTS),
+				zap.Uint64("sequence", event.Sequence),
+				zap.String("user_id", event.UserID),
 				zap.Time("received_at", event.ReceivedAt))
 
 			ctx := context.Background()
 			wp.processor.ProcessEvent(ctx, event.Payload)
 
-			wp.logger.Debug("Event processed",
+			wp.logger.Info("Event processed (COMPLETE)",
 				zap.String("queue_key", queueKey),
-				zap.String("message_ts", event.MessageTS))
+				zap.String("message_ts", event.MessageTS),
+				zap.Uint64("sequence", event.Sequence))
 
 		case <-idleTimer.C:
 			// No messages for idleTimeout duration, exit worker
