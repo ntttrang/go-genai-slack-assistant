@@ -127,11 +127,11 @@ func (fp *FormatPreserver) extractEmojis(text string) string {
 
 func (fp *FormatPreserver) extractLineBreaks(text string) string {
 	// Replace newlines with placeholder to preserve structure
-	return strings.ReplaceAll(text, "\n", "LINEBREAK\n")
+	return strings.ReplaceAll(text, "\n", "LINEBREAK")
 }
 
 func (fp *FormatPreserver) restoreLineBreaks(text string) string {
-	return strings.ReplaceAll(text, "LINEBREAK\n", "\n")
+	return strings.ReplaceAll(text, "LINEBREAK", "\n")
 }
 
 func (fp *FormatPreserver) restoreEmojis(text string) string {
