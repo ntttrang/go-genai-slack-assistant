@@ -220,7 +220,7 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 	if result.TargetLanguage == "English" {
 		emoji = "🇬🇧"
 	}
-	responseText := fmt.Sprintf("%s %s", emoji, translatedText)
+	responseText := fmt.Sprintf("%s\n%s", emoji, translatedText)
 	_, _, err = ep.slackClient.PostMessage(channelID, responseText, ts)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message",
@@ -387,7 +387,7 @@ func (ep *eventProcessorImpl) handleReactionEvent(ctx context.Context, event map
 	if result.TargetLanguage == "English" {
 		emoji = "🇬🇧"
 	}
-	responseText := fmt.Sprintf("%s %s", emoji, translatedText)
+	responseText := fmt.Sprintf("%s\n%s", emoji, translatedText)
 	_, _, err = ep.slackClient.PostMessage(channelID, responseText, messageTS)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message from reaction",
