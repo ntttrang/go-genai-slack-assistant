@@ -114,7 +114,7 @@ func main() {
 
 	// Initialize translation use case
 	cacheTTL := int64(cfg.Application.CacheTTLTranslation)
-	translationUseCase := service.NewTranslationUseCase(translationRepo, cacheInstance, geminiProvider, cacheTTL, securityMiddleware)
+	translationUseCase := service.NewTranslationUseCase(log, translationRepo, cacheInstance, geminiProvider, cacheTTL, securityMiddleware)
 
 	// Initialize Slack client
 	slackClient := slackservice.NewSlackClient(cfg.Slack.BotToken)

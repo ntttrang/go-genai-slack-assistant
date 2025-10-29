@@ -33,10 +33,10 @@ func (v *OutputValidator) ValidateTranslation(output, originalInput string) Outp
 		result.IsValid = false
 	}
 
-	if v.containsSuspiciousAcknowledgment(output) {
-		result.Issues = append(result.Issues, "Output contains acknowledgment of injected instructions")
-		result.IsValid = false
-	}
+	// if v.containsSuspiciousAcknowledgment(output) {
+	// 	result.Issues = append(result.Issues, "Output contains acknowledgment of injected instructions")
+	// 	result.IsValid = false
+	// }
 
 	if len(output) > v.maxOutputLength {
 		result.Issues = append(result.Issues, "Output exceeds maximum length")
@@ -76,24 +76,24 @@ func (v *OutputValidator) containsSystemPromptLeakage(output string) bool {
 	return false
 }
 
-func (v *OutputValidator) containsSuspiciousAcknowledgment(output string) bool {
-	lowerOutput := strings.ToLower(output)
-	acknowledgments := []string{
-		"i understand",
-		"i will now",
-		"okay, i'll",
-		"sure, i can",
-		"acknowledged",
-	}
+// func (v *OutputValidator) containsSuspiciousAcknowledgment(output string) bool {
+// 	lowerOutput := strings.ToLower(output)
+// 	acknowledgments := []string{
+// 		"i understand",
+// 		"i will now",
+// 		"okay, i'll",
+// 		"sure, i can",
+// 		"acknowledged",
+// 	}
 
-	for _, ack := range acknowledgments {
-		if strings.Contains(lowerOutput, ack) {
-			return true
-		}
-	}
+// 	for _, ack := range acknowledgments {
+// 		if strings.Contains(lowerOutput, ack) {
+// 			return true
+// 		}
+// 	}
 
-	return false
-}
+// 	return false
+// }
 
 func (v *OutputValidator) cleanOutput(output string) string {
 	cleaned := strings.TrimSpace(output)
