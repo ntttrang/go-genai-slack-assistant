@@ -16,6 +16,7 @@ import (
 
 	"github.com/ntttrang/go-genai-slack-assistant/internal/controller"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/queue"
 	gormmysql "github.com/ntttrang/go-genai-slack-assistant/internal/repository/gorm-mysql"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
 	slackservice "github.com/ntttrang/go-genai-slack-assistant/internal/service/slack"
@@ -122,6 +123,17 @@ func main() {
 	// Initialize event processor (implements slack.EventProcessor interface)
 	var eventProc slackservice.EventProcessor = slackservice.NewEventProcessor(translationUseCase, slackClient, log)
 
+	// Initialize worker pool for ordered message processing
+	workerPool := queue.NewWorkerPool(
+		eventProc,
+		cfg.Application.QueueBufferSize,
+		cfg.Application.QueueIdleTimeout,
+		log,
+	)
+	log.Info("Worker pool initialized",
+		zap.Int("buffer_size", cfg.Application.QueueBufferSize),
+		zap.Duration("idle_timeout", cfg.Application.QueueIdleTimeout))
+
 	// Initialize router
 	r := gin.Default()
 
@@ -137,7 +149,7 @@ func main() {
 	slackGroup := r.Group("/slack")
 	slackGroup.Use(middleware.VerifySlackSignatureGin(cfg.Slack.SigningSecret))
 	{
-		slackHandler := controller.NewSlackWebhookHandler(eventProc, log)
+		slackHandler := controller.NewSlackWebhookHandler(workerPool, log)
 		slackGroup.POST("/events", slackHandler.HandleSlackEventsGin)
 	}
 
@@ -171,7 +183,18 @@ func main() {
 			os.Exit(1)
 		}
 	case sig := <-sigChan:
-		log.Info("Received signal", zap.String("signal", sig.String()))
+		log.Info("Received shutdown signal", zap.String("signal", sig.String()))
+
+		// Step 1: Shutdown worker pool (drain remaining messages)
+		log.Info("Shutting down worker pool...")
+		if err := workerPool.Shutdown(30 * time.Second); err != nil {
+			log.Error("Worker pool shutdown error", zap.Error(err))
+		} else {
+			log.Info("Worker pool stopped successfully")
+		}
+
+		// Step 2: Shutdown HTTP server
+		log.Info("Shutting down HTTP server...")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
@@ -180,5 +203,5 @@ func main() {
 		}
 	}
 
-	log.Info("Server stopped")
+	log.Info("Application stopped gracefully")
 }

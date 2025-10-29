@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang/mock/gomock"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/queue"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/testutils/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -23,8 +24,12 @@ func TestSlackWebhookHandlerURLVerification(t *testing.T) {
 
 	mockEventProc := mocks.NewMockEventProcessorService(ctrl)
 	logger, _ := zap.NewProduction()
+	
+	// Create worker pool with mock processor
+	workerPool := queue.NewWorkerPool(mockEventProc, 10, 1*time.Minute, logger)
+	defer workerPool.Shutdown(5 * time.Second)
 
-	handler := NewSlackWebhookHandler(mockEventProc, logger)
+	handler := NewSlackWebhookHandler(workerPool, logger)
 
 	// Create request body with URL verification challenge
 	payload := map[string]interface{}{
@@ -54,14 +59,21 @@ func TestSlackWebhookHandlerEventCallback(t *testing.T) {
 
 	mockEventProc := mocks.NewMockEventProcessorService(ctrl)
 	logger, _ := zap.NewProduction()
+	
+	// Create worker pool with mock processor
+	workerPool := queue.NewWorkerPool(mockEventProc, 10, 1*time.Minute, logger)
+	defer workerPool.Shutdown(5 * time.Second)
 
-	handler := NewSlackWebhookHandler(mockEventProc, logger)
+	handler := NewSlackWebhookHandler(workerPool, logger)
 
 	// Create request body with regular event callback
 	payload := map[string]interface{}{
 		"type": "event_callback",
 		"event": map[string]interface{}{
-			"type": "message",
+			"type":    "message",
+			"channel": "C123",
+			"user":    "U456",
+			"ts":      "1234567890.123456",
 		},
 	}
 	body, _ := json.Marshal(payload)
@@ -71,7 +83,7 @@ func TestSlackWebhookHandlerEventCallback(t *testing.T) {
 	ctx.Request = httptest.NewRequest("POST", "/slack/events", bytes.NewBuffer(body))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
-	// Setup expectation for async ProcessEvent call
+	// Setup expectation for ProcessEvent call (will be called by worker)
 	mockEventProc.EXPECT().
 		ProcessEvent(gomock.Any(), gomock.Any()).
 		Times(1).
@@ -82,10 +94,10 @@ func TestSlackWebhookHandlerEventCallback(t *testing.T) {
 	// Execute
 	handler.HandleSlackEventsGin(ctx)
 
-	// Assert - response should be OK (event is processed in goroutine)
+	// Assert - response should be OK (event is enqueued for processing)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	
-	// Wait for goroutine to complete
+	// Wait for worker to process
 	time.Sleep(100 * time.Millisecond)
 }
 
@@ -97,8 +109,12 @@ func TestSlackWebhookHandlerInvalidJSON(t *testing.T) {
 
 	mockEventProc := mocks.NewMockEventProcessorService(ctrl)
 	logger, _ := zap.NewProduction()
+	
+	// Create worker pool with mock processor
+	workerPool := queue.NewWorkerPool(mockEventProc, 10, 1*time.Minute, logger)
+	defer workerPool.Shutdown(5 * time.Second)
 
-	handler := NewSlackWebhookHandler(mockEventProc, logger)
+	handler := NewSlackWebhookHandler(workerPool, logger)
 
 	// Create request with invalid JSON
 	rec := httptest.NewRecorder()
@@ -119,10 +135,14 @@ func TestSlackWebhookHandlerImplementsCorrectSignature(t *testing.T) {
 
 	mockEventProc := mocks.NewMockEventProcessorService(ctrl)
 	logger, _ := zap.NewProduction()
+	
+	// Create worker pool with mock processor
+	workerPool := queue.NewWorkerPool(mockEventProc, 10, 1*time.Minute, logger)
+	defer workerPool.Shutdown(5 * time.Second)
 
-	handler := NewSlackWebhookHandler(mockEventProc, logger)
+	handler := NewSlackWebhookHandler(workerPool, logger)
 
-	// Verify the handler accepts the interface type correctly
+	// Verify the handler is created correctly
 	assert.NotNil(t, handler)
-	assert.NotNil(t, handler.eventProcessor)
+	assert.NotNil(t, handler.workerPool)
 }

@@ -63,6 +63,8 @@ type ApplicationConfig struct {
 	RateLimitPerUser          int
 	RateLimitPerChannel       int
 	MaxMessageLength          int
+	QueueBufferSize           int
+	QueueIdleTimeout          time.Duration
 }
 
 // SecurityConfig holds security configuration
@@ -110,6 +112,8 @@ func Load() (*Config, error) {
 			RateLimitPerUser:          getEnvInt("RATE_LIMIT_PER_USER", 10),
 			RateLimitPerChannel:       getEnvInt("RATE_LIMIT_PER_CHANNEL", 30),
 			MaxMessageLength:          getEnvInt("MAX_MESSAGE_LENGTH", 10240),
+			QueueBufferSize:           getEnvInt("QUEUE_BUFFER_SIZE", 100),
+			QueueIdleTimeout:          time.Duration(getEnvInt("QUEUE_IDLE_TIMEOUT", 300)) * time.Second,
 		},
 		Security: SecurityConfig{
 			MaxInputLength:        getEnvInt("MAX_INPUT_LENGTH", 5000),
