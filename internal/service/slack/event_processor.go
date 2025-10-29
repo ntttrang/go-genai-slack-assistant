@@ -196,6 +196,14 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		ep.logger.Error("Failed to translate message",
 			zap.Error(err),
 			zap.String("text", text))
+
+		errorMsg := fmt.Sprintf("❌ Translation failed: %s", err.Error())
+		_, _, postErr := ep.slackClient.PostMessage(channelID, errorMsg, ts)
+		if postErr != nil {
+			ep.logger.Error("Failed to post translation error message",
+				zap.Error(postErr),
+				zap.String("channel_id", channelID))
+		}
 		return
 	}
 
@@ -361,6 +369,14 @@ func (ep *eventProcessorImpl) handleReactionEvent(ctx context.Context, event map
 		ep.logger.Error("Failed to translate message from reaction",
 			zap.Error(err),
 			zap.String("text", message.Text))
+
+		errorMsg := fmt.Sprintf("❌ Translation failed: %s", err.Error())
+		_, _, postErr := ep.slackClient.PostMessage(channelID, errorMsg, messageTS)
+		if postErr != nil {
+			ep.logger.Error("Failed to post translation error message",
+				zap.Error(postErr),
+				zap.String("channel_id", channelID))
+		}
 		return
 	}
 
