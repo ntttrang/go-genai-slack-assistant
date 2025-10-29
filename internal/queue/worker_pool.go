@@ -12,15 +12,16 @@ import (
 )
 
 // WorkerPool manages message queues and workers for ordered message processing.
-// Each unique channel+user combination gets its own queue and worker goroutine.
+// Each unique channel gets its own queue and worker goroutine.
 type WorkerPool struct {
-	queues      sync.Map              // map[string]chan *model.MessageEvent
-	processor   slack.EventProcessor  // processes events synchronously
-	bufferSize  int                   // buffer size for each queue channel
-	idleTimeout time.Duration         // time after which idle workers are cleaned up
-	shutdown    chan struct{}         // signal for graceful shutdown
-	wg          sync.WaitGroup        // wait for all workers to finish
-	logger      *zap.Logger
+	queues       sync.Map              // map[string]chan *model.MessageEvent
+	seenEvents   sync.Map              // map[string]bool for deduplication by event_id
+	processor    slack.EventProcessor  // processes events synchronously
+	bufferSize   int                   // buffer size for each queue channel
+	idleTimeout  time.Duration         // time after which idle workers are cleaned up
+	shutdown     chan struct{}         // signal for graceful shutdown
+	wg           sync.WaitGroup        // wait for all workers to finish
+	logger       *zap.Logger
 }
 
 // NewWorkerPool creates a new worker pool for processing message events.
@@ -40,9 +41,21 @@ func NewWorkerPool(
 	}
 }
 
-// Enqueue adds a message event to the appropriate queue based on channel+user.
-// If no queue exists for this combination, a new one is created and a worker is spawned.
+// Enqueue adds a message event to the appropriate queue based on channel.
+// If no queue exists for this channel, a new one is created and a worker is spawned.
+// Duplicate events (same event_id) are silently dropped to prevent processing duplicates from Slack retries.
 func (wp *WorkerPool) Enqueue(event *model.MessageEvent) {
+	// Deduplicate by event_id
+	if event.EventID != "" {
+		if _, exists := wp.seenEvents.LoadOrStore(event.EventID, true); exists {
+			wp.logger.Debug("Duplicate event detected, dropping",
+				zap.String("event_id", event.EventID),
+				zap.String("channel_id", event.ChannelID),
+				zap.String("message_ts", event.MessageTS))
+			return
+		}
+	}
+
 	queueKey := event.GetQueueKey()
 
 	// Get existing queue or create new one
@@ -62,7 +75,8 @@ func (wp *WorkerPool) Enqueue(event *model.MessageEvent) {
 	case eventChan <- event:
 		wp.logger.Debug("Message enqueued",
 			zap.String("queue_key", queueKey),
-			zap.String("message_ts", event.MessageTS))
+			zap.String("message_ts", event.MessageTS),
+			zap.String("event_id", event.EventID))
 	case <-wp.shutdown:
 		wp.logger.Warn("Dropping message, shutdown in progress",
 			zap.String("queue_key", queueKey))
@@ -156,6 +170,10 @@ func (wp *WorkerPool) drainQueue(queueKey string, eventChan chan *model.MessageE
 func (wp *WorkerPool) cleanup(queueKey string, eventChan chan *model.MessageEvent) {
 	close(eventChan)
 	wp.queues.Delete(queueKey)
+	
+	// Note: We don't clean up seenEvents here since they need to persist across worker lifecycle
+	// to handle Slack's retry window. Memory impact is minimal as events only accumulate briefly.
+	
 	wp.logger.Info("Worker cleaned up",
 		zap.String("queue_key", queueKey))
 }

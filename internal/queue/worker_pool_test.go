@@ -340,3 +340,41 @@ func TestWorkerPool_GetQueueKey(t *testing.T) {
 		t.Errorf("Expected queue key %s, got %s", expected, key)
 	}
 }
+
+func TestWorkerPool_EventDeduplication(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	processor := newMockEventProcessor(0)
+	workerPool := NewWorkerPool(processor, 10, 1*time.Minute, logger)
+	defer workerPool.Shutdown(5 * time.Second)
+
+	// Create two events with the same event_id (simulating Slack retry)
+	event1 := &model.MessageEvent{
+		EventID:    "evt123",
+		ChannelID:  "C123",
+		UserID:     "U111",
+		MessageTS:  "1000.001",
+		Payload:    map[string]interface{}{"event": map[string]interface{}{"ts": "1000.001"}},
+		ReceivedAt: time.Now(),
+	}
+
+	event2 := &model.MessageEvent{
+		EventID:    "evt123", // Same event ID - should be deduplicated
+		ChannelID:  "C123",
+		UserID:     "U111",
+		MessageTS:  "1000.001",
+		Payload:    map[string]interface{}{"event": map[string]interface{}{"ts": "1000.001"}},
+		ReceivedAt: time.Now(),
+	}
+
+	// Enqueue both events
+	workerPool.Enqueue(event1)
+	workerPool.Enqueue(event2)
+
+	// Wait for processing
+	time.Sleep(100 * time.Millisecond)
+
+	// Only first event should have been processed (second was deduplicated)
+	if processor.getCallCount() != 1 {
+		t.Errorf("Expected 1 processed event (second was deduplicated), got %d", processor.getCallCount())
+	}
+}
