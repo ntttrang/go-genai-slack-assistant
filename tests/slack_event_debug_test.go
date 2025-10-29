@@ -32,7 +32,7 @@ func TestTranslationFlowEnglishToVietnamese(t *testing.T) {
 	mockCache.On("Get", mock.Anything).Return("", errors.New("cache miss"))
 
 	// Mock database miss
-	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("not found"))
+	mockRepo.On("GetByHash", mock.Anything).Return(nil, errors.New("record not found"))
 
 	// Mock save
 	mockRepo.On("Save", mock.Anything).Return(nil)
