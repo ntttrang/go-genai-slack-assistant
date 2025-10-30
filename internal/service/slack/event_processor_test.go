@@ -61,9 +61,6 @@ func TestEventProcessorImplementsInterface(t *testing.T) {
 	logger, _ := zap.NewProduction()
 
 	processor := NewEventProcessor(mockTranslationService, nil, logger)
-
-	// Assert that processor implements EventProcessor interface
-	var _ EventProcessor = processor
 	assert.NotNil(t, processor)
 }
 
@@ -209,3 +206,22 @@ func TestExtractAndRestoreEmojis_OnlyEmojis(t *testing.T) {
 
 	assert.Equal(t, originalText, restoredText)
 }
+
+func TestConvertUserMentionsToText_WithoutMentions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockTranslationService := mocks.NewMockTranslationService(ctrl)
+	logger, _ := zap.NewProduction()
+
+	processor := NewEventProcessor(mockTranslationService, nil, logger).(*eventProcessorImpl)
+
+	originalText := "Hello world"
+	translatedText := "Xin chào thế giới"
+
+	result := processor.convertUserMentionsToText(originalText, translatedText)
+
+	assert.Equal(t, translatedText, result)
+}
+
+

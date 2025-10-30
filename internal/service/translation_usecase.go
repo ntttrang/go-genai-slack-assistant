@@ -56,42 +56,52 @@ func NewTranslationUseCase(
 }
 
 func (tu *TranslationUseCase) Translate(req request.Translation) (response.Translation, error) {
-	// 1. Validate input
-	inputValidation, err := tu.securityMiddleware.ValidateInput(req.Text)
+	fmt.Println("Slack sent: ", req.Text)
+
+	// 1. Extract and preserve formatting before validation
+	preserver := NewFormatPreserver()
+	textWithoutFormat := preserver.Extract(req.Text)
+
+	// 2. Validate input
+	inputValidation, err := tu.securityMiddleware.ValidateInput(textWithoutFormat)
 	if err != nil {
 		return response.Translation{}, fmt.Errorf("input validation failed: %w", err)
 	}
 
 	sanitizedText := inputValidation.SanitizedText
 
-	// 2. Generate hash with sanitized text
+	// 3. Generate hash with sanitized text (for caching)
 	hash := tu.generateHash(sanitizedText, req.SourceLanguage, req.TargetLanguage)
 	cacheKey := fmt.Sprintf("translation:%s", hash)
 
-	// 3. Try to get from cache
+	// 4. Try to get from cache
 	cachedResult, err := tu.cache.Get(cacheKey)
 	if err == nil && cachedResult != "" {
+		// Restore formatting to cached result
+		restoredResult := preserver.Restore(cachedResult)
 		return response.Translation{
 			OriginalText:   req.Text,
-			TranslatedText: cachedResult,
+			TranslatedText: restoredResult,
 			SourceLanguage: req.SourceLanguage,
 			TargetLanguage: req.TargetLanguage,
 		}, nil
 	}
 
-	// 4. Try to get from database
+	// 5. Try to get from database
 	existingTranslation, err := tu.repo.GetByHash(hash)
 	if (err == nil && existingTranslation != nil) || (err != nil && err.Error() != "record not found") {
-		tu.cache.Set(cacheKey, existingTranslation.TranslatedText, tu.cacheTTL)
+		cachedTranslated := existingTranslation.TranslatedText
+		_ = tu.cache.Set(cacheKey, cachedTranslated, tu.cacheTTL)
+		restoredResult := preserver.Restore(cachedTranslated)
 		return response.Translation{
 			OriginalText:   req.Text,
-			TranslatedText: existingTranslation.TranslatedText,
+			TranslatedText: restoredResult,
 			SourceLanguage: req.SourceLanguage,
 			TargetLanguage: req.TargetLanguage,
 		}, nil
 	}
 
-	// 5. Call AI to translate with sanitized text
+	// 6. Call AI to translate with cleaned text (no formatting)
 	tu.logger.Info("[Start] Call to AI provider to translate")
 	translatedText, err := tu.translator.Translate(sanitizedText, req.SourceLanguage, req.TargetLanguage)
 	if err != nil {
@@ -99,7 +109,7 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 	}
 	tu.logger.Info("[End] Call to AI provider to translate")
 
-	// 6. Validate output
+	// 7. Validate output
 	outputValidation, err := tu.securityMiddleware.ValidateOutput(translatedText, sanitizedText)
 	if err != nil {
 		return response.Translation{}, fmt.Errorf("output validation failed: %w", err)
@@ -107,7 +117,10 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 
 	translatedText = outputValidation.CleanedText
 
-	// 7. Store in database
+	// 8. Restore formatting to translated text
+	restoredTranslatedText := preserver.Restore(translatedText)
+
+	// 9. Store in database (without formatting for consistency)
 	translation := &model.Translation{
 		ID:             generateID(),
 		SourceText:     sanitizedText,
@@ -123,12 +136,12 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 		return response.Translation{}, fmt.Errorf("failed to save translation: %w", err)
 	}
 
-	// 8. Store in cache
-	tu.cache.Set(cacheKey, translatedText, tu.cacheTTL)
+	// 10. Store in cache (without formatting)
+	_ = tu.cache.Set(cacheKey, translatedText, tu.cacheTTL)
 
 	return response.Translation{
 		OriginalText:   req.Text,
-		TranslatedText: translatedText,
+		TranslatedText: restoredTranslatedText,
 		SourceLanguage: req.SourceLanguage,
 		TargetLanguage: req.TargetLanguage,
 	}, nil

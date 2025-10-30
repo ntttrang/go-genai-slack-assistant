@@ -30,7 +30,7 @@ func closeMockDB(t *testing.T, db *sql.DB, mock sqlmock.Sqlmock) {
 	err := mock.ExpectationsWereMet()
 	require.NoError(t, err, "not all database expectations were met")
 
-	db.Close()
+	_ = db.Close()
 }
 
 func TestChannelRepositoryImpl_Save(t *testing.T) {

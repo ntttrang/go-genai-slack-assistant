@@ -28,7 +28,7 @@ func VerifySlackSignature(signingSecret string) func(http.Handler) http.Handler 
 			reqTime, err := time.Parse(time.RFC3339, fmt.Sprintf("%sZ", timestamp))
 			if err != nil {
 				ts := time.Now().Unix()
-				fmt.Sscanf(timestamp, "%d", &ts)
+				_, _ = fmt.Sscanf(timestamp, "%d", &ts)
 				reqTime = time.Unix(ts, 0)
 			}
 
@@ -79,7 +79,7 @@ func VerifySlackSignatureGin(signingSecret string) gin.HandlerFunc {
 		reqTime, err := time.Parse(time.RFC3339, fmt.Sprintf("%sZ", timestamp))
 		if err != nil {
 			ts := time.Now().Unix()
-			fmt.Sscanf(timestamp, "%d", &ts)
+			_, _ = fmt.Sscanf(timestamp, "%d", &ts)
 			reqTime = time.Unix(ts, 0)
 		}
 

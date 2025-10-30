@@ -158,9 +158,24 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
 			zap.String("detected_language", detectedLang))
 
+		// Get user info for custom bot name and avatar
+		userInfo, err := ep.slackClient.GetUserInfo(userID)
+		botName := "SlackBot"
+		botAvatar := ""
+		if err == nil && userInfo != nil {
+			botName = userInfo.Profile.DisplayName + " ( Bot)"
+			if botName == " bot" {
+				botName = userInfo.Name + " ( Bot)"
+			}
+			botAvatar = userInfo.Profile.Image512
+			if botAvatar == "" {
+				botAvatar = userInfo.Profile.Image48
+			}
+		}
+
 		// Post error message to thread
-		errorMsg := "Sorry, I can't support this language. I only translate English and Vietnamese."
-		_, _, err := ep.slackClient.PostMessage(channelID, errorMsg, ts)
+		errorMsg := "⚠️ Sorry! I only translate English and Vietnamese right now, not other languages or slang."
+		_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, ts, botName, botAvatar)
 		if err != nil {
 			ep.logger.Error("Failed to post error message",
 				zap.Error(err),
@@ -177,14 +192,29 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 
 	result, err := ep.translationUseCase.Translate(translationReq)
 	if err != nil {
+		// Get user info for error messages
+		userInfo, _ := ep.slackClient.GetUserInfo(userID)
+		botName := "SlackBot"
+		botAvatar := ""
+		if userInfo != nil {
+			botName = userInfo.Profile.DisplayName + " ( Bot)"
+			if botName == " bot" {
+				botName = userInfo.Name + " ( Bot)"
+			}
+			botAvatar = userInfo.Profile.Image512
+			if botAvatar == "" {
+				botAvatar = userInfo.Profile.Image48
+			}
+		}
+
 		if strings.Contains(err.Error(), "Delimiter tag injection") || strings.Contains(err.Error(), "input validation failed") {
 			ep.logger.Warn("Security validation failed for message",
 				zap.Error(err),
 				zap.String("channel_id", channelID),
 				zap.String("user_id", userID))
 
-			errorMsg := "Sorry, I can't support this language. Something wrong in your text"
-			_, _, postErr := ep.slackClient.PostMessage(channelID, errorMsg, ts)
+			errorMsg := "Sorry, there seems to be an error in your text. Please check the content and try again."
+			_, _, postErr := ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, ts, botName, botAvatar)
 			if postErr != nil {
 				ep.logger.Error("Failed to post security error message",
 					zap.Error(postErr),
@@ -196,6 +226,14 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		ep.logger.Error("Failed to translate message",
 			zap.Error(err),
 			zap.String("text", text))
+
+		errorMsg := "❌ Sorry, I can't translate because the current quota has been exceeded. Please try again later."
+		_, _, postErr := ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, ts, botName, botAvatar)
+		if postErr != nil {
+			ep.logger.Error("Failed to post translation error message",
+				zap.Error(postErr),
+				zap.String("channel_id", channelID))
+		}
 		return
 	}
 
@@ -207,13 +245,37 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		zap.String("source_lang", result.SourceLanguage),
 		zap.String("target_lang", result.TargetLanguage))
 
+	translatedText = ep.convertUserMentionsToText(text, translatedText)
+
 	// Post translated message as a thread reply with emoji flag
 	emoji := "🇻🇳"
 	if result.TargetLanguage == "English" {
 		emoji = "🇬🇧"
 	}
 	responseText := fmt.Sprintf("%s %s", emoji, translatedText)
-	_, _, err = ep.slackClient.PostMessage(channelID, responseText, ts)
+
+	// Get user info for custom bot name and avatar
+	userInfo, err := ep.slackClient.GetUserInfo(userID)
+	botName := "SlackBot"
+	botAvatar := ""
+	if err == nil && userInfo != nil {
+		botName = userInfo.Profile.DisplayName + " ( Bot)"
+		if botName == " bot" {
+			botName = userInfo.Name + " ( Bot)"
+		}
+		botAvatar = userInfo.Profile.Image512
+		if botAvatar == "" {
+			botAvatar = userInfo.Profile.Image48
+		}
+		ep.logger.Debug("User info retrieved",
+			zap.String("user_name", userInfo.Name),
+			zap.String("bot_name", botName))
+	} else {
+		ep.logger.Warn("Failed to get user info, using default bot name",
+			zap.Error(err))
+	}
+
+	_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, responseText, ts, botName, botAvatar)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message",
 			zap.Error(err),
@@ -324,9 +386,24 @@ func (ep *eventProcessorImpl) handleReactionEvent(ctx context.Context, event map
 		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
 			zap.String("detected_language", detectedLang))
 
+		// Get user info for custom bot name and avatar
+		userInfo, err := ep.slackClient.GetUserInfo(message.User)
+		botName := "SlackBot"
+		botAvatar := ""
+		if err == nil && userInfo != nil {
+			botName = userInfo.Profile.DisplayName + " ( Bot)"
+			if botName == " bot" {
+				botName = userInfo.Name + " ( Bot)"
+			}
+			botAvatar = userInfo.Profile.Image512
+			if botAvatar == "" {
+				botAvatar = userInfo.Profile.Image48
+			}
+		}
+
 		// Post error message to thread
-		errorMsg := "Sorry, I can't support this language. I only translate English and Vietnamese."
-		_, _, err := ep.slackClient.PostMessage(channelID, errorMsg, messageTS)
+		errorMsg := "⚠️ Sorry! I only translate English and Vietnamese right now, not other languages or slang."
+		_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, messageTS, botName, botAvatar)
 		if err != nil {
 			ep.logger.Error("Failed to post error message",
 				zap.Error(err),
@@ -343,13 +420,28 @@ func (ep *eventProcessorImpl) handleReactionEvent(ctx context.Context, event map
 
 	result, err := ep.translationUseCase.Translate(translationReq)
 	if err != nil {
+		// Get user info for error messages
+		userInfo, _ := ep.slackClient.GetUserInfo(message.User)
+		botName := "SlackBot"
+		botAvatar := ""
+		if userInfo != nil {
+			botName = userInfo.Profile.DisplayName + " (Bot) 🇻🇳 ⇄ 🇬🇧"
+			if botName == " bot" {
+				botName = userInfo.Name + " (Bot)"
+			}
+			botAvatar = userInfo.Profile.Image512
+			if botAvatar == "" {
+				botAvatar = userInfo.Profile.Image48
+			}
+		}
+
 		if strings.Contains(err.Error(), "Delimiter tag injection") || strings.Contains(err.Error(), "input validation failed") {
 			ep.logger.Warn("Security validation failed for reaction translation",
 				zap.Error(err),
 				zap.String("channel_id", channelID))
 
-			errorMsg := "Sorry, I can't support this language. Something wrong in your text"
-			_, _, postErr := ep.slackClient.PostMessage(channelID, errorMsg, messageTS)
+			errorMsg := "⚠️ Sorry, there seems to be an error in your text. Please check the content and try again."
+			_, _, postErr := ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, messageTS, botName, botAvatar)
 			if postErr != nil {
 				ep.logger.Error("Failed to post security error message",
 					zap.Error(postErr),
@@ -361,18 +453,50 @@ func (ep *eventProcessorImpl) handleReactionEvent(ctx context.Context, event map
 		ep.logger.Error("Failed to translate message from reaction",
 			zap.Error(err),
 			zap.String("text", message.Text))
+
+		errorMsg := "❌ Sorry, I can't translate because the current quota has been exceeded. Please try again later."
+		_, _, postErr := ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, messageTS, botName, botAvatar)
+		if postErr != nil {
+			ep.logger.Error("Failed to post translation error message",
+				zap.Error(postErr),
+				zap.String("channel_id", channelID))
+		}
 		return
 	}
 
 	translatedText := result.TranslatedText
+
+	translatedText = ep.convertUserMentionsToText(message.Text, translatedText)
 
 	// Post translated message as a thread reply with emoji flag
 	emoji := "🇻🇳"
 	if result.TargetLanguage == "English" {
 		emoji = "🇬🇧"
 	}
-	responseText := fmt.Sprintf("%s %s", emoji, translatedText)
-	_, _, err = ep.slackClient.PostMessage(channelID, responseText, messageTS)
+	responseText := fmt.Sprintf("%s\n%s", emoji, translatedText)
+
+	// Get user info for custom bot name and avatar
+	userInfo, err := ep.slackClient.GetUserInfo(message.User)
+	botName := "SlackBot"
+	botAvatar := ""
+	if err == nil && userInfo != nil {
+		botName = userInfo.Profile.DisplayName + " ( Bot)"
+		if botName == " bot" {
+			botName = userInfo.Name + " ( Bot)"
+		}
+		botAvatar = userInfo.Profile.Image512
+		if botAvatar == "" {
+			botAvatar = userInfo.Profile.Image48
+		}
+		ep.logger.Debug("User info retrieved",
+			zap.String("user_name", userInfo.Name),
+			zap.String("bot_name", botName))
+	} else {
+		ep.logger.Warn("Failed to get user info, using default bot name",
+			zap.Error(err))
+	}
+
+	_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, responseText, messageTS, botName, botAvatar)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message from reaction",
 			zap.Error(err),
@@ -423,5 +547,48 @@ func restoreEmojis(text string, emojis map[string]string) string {
 	for placeholder, emoji := range emojis {
 		result = strings.ReplaceAll(result, placeholder, emoji)
 	}
+	return result
+}
+
+func (ep *eventProcessorImpl) convertUserMentionsToText(originalText, translatedText string) string {
+	userMentionPattern := regexp.MustCompile(`<@(U[A-Z0-9]+)>`)
+
+	userIDs := make([]string, 0)
+	seen := make(map[string]bool)
+	matches := userMentionPattern.FindAllStringSubmatch(originalText, -1)
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			userID := match[1]
+			if !seen[userID] {
+				userIDs = append(userIDs, userID)
+				seen[userID] = true
+			}
+		}
+	}
+
+	if len(userIDs) == 0 {
+		return translatedText
+	}
+
+	usernameMap := make(map[string]string)
+	for _, userID := range userIDs {
+		userInfo, err := ep.slackClient.GetUserInfo(userID)
+		if err == nil && userInfo != nil {
+			username := userInfo.Profile.DisplayName
+			if username == "" {
+				username = userInfo.Name
+			}
+			if username != "" {
+				usernameMap[userID] = "`@" + username + "`"
+			}
+		}
+	}
+
+	result := translatedText
+	for userID, mention := range usernameMap {
+		result = strings.ReplaceAll(result, "<@"+userID+">", mention)
+	}
+
 	return result
 }

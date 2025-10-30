@@ -7,12 +7,13 @@ Go to your Slack App settings (https://api.slack.com/apps) and add these **Bot T
 1. **`channels:history`** - Read messages in public channels
 2. **`channels:read`** - View basic information about public channels  
 3. **`chat:write`** - Post messages in channels
-4. **`groups:history`** - Read messages in private channels (if needed)
-5. **`groups:read`** - View basic information about private channels (if needed)
-6. **`im:history`** - Read messages in direct messages (if needed)
-7. **`users:read`** - View people in a workspace
-8. **`reactions:write`** - Required to add emoji reactions
-9. **`reactions:read`** - Optional, to read reaction data
+4. **`chat:write.customize`** - Send messages with customized username and avatar
+5. **`groups:history`** - Read messages in private channels (if needed)
+6. **`groups:read`** - View basic information about private channels (if needed)
+7. **`im:history`** - Read messages in direct messages (if needed)
+8. **`users:read`** - View people in a workspace
+9. **`reactions:write`** - Required to add emoji reactions
+10. **`reactions:read`** - Optional, to read reaction data
 
 ### Steps to Add Scopes:
 

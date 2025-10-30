@@ -40,12 +40,24 @@ func (sc *SlackClient) GetMessage(channelID, timestamp string) (*slack.Message, 
 }
 
 func (sc *SlackClient) PostMessage(channelID, text string, threadTS string) (string, string, error) {
+	return sc.PostMessageWithBotInfo(channelID, text, threadTS, "", "")
+}
+
+func (sc *SlackClient) PostMessageWithBotInfo(channelID, text string, threadTS string, username string, avatarURL string) (string, string, error) {
 	opts := []slack.MsgOption{
 		slack.MsgOptionText(text, false),
 	}
 
 	if threadTS != "" {
 		opts = append(opts, slack.MsgOptionTS(threadTS))
+	}
+
+	if username != "" {
+		opts = append(opts, slack.MsgOptionUsername(username))
+	}
+
+	if avatarURL != "" {
+		opts = append(opts, slack.MsgOptionIconURL(avatarURL))
 	}
 
 	channel, ts, err := sc.client.PostMessage(channelID, opts...)
