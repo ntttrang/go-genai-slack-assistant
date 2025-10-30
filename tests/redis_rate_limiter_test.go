@@ -17,7 +17,7 @@ func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {
 		Addr: "localhost:6379",
 	})
 
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Cleanup
 	ctx := context.Background()
@@ -37,7 +37,7 @@ func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
 		Addr: "localhost:6379",
 	})
 
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -58,7 +58,7 @@ func TestRedisRateLimiter_CheckChannelLimit_FirstRequest(t *testing.T) {
 		Addr: "localhost:6379",
 	})
 
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -77,7 +77,7 @@ func TestRedisRateLimiter_RateLimitExceeded(t *testing.T) {
 		Addr: "localhost:6379",
 	})
 
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -103,7 +103,7 @@ func TestRedisRateLimiter_TTLExpiration(t *testing.T) {
 		Addr: "localhost:6379",
 	})
 
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
