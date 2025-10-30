@@ -1,6 +1,8 @@
 module github.com/ntttrang/go-genai-slack-assistant
 
-go 1.25.1
+go 1.24.0
+
+toolchain go1.24.1
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
