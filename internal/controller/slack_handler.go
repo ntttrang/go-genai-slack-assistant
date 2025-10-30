@@ -34,7 +34,9 @@ func (h *SlackWebhookHandler) HandleSlackEvents(w http.ResponseWriter, r *http.R
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	var payload map[string]interface{}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -52,7 +54,7 @@ func (h *SlackWebhookHandler) HandleSlackEvents(w http.ResponseWriter, r *http.R
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(challenge))
+		_, _ = w.Write([]byte(challenge))
 		return
 	}
 
@@ -62,7 +64,7 @@ func (h *SlackWebhookHandler) HandleSlackEvents(w http.ResponseWriter, r *http.R
 		h.logger.Debug("Skipping non-message event or unable to extract event details", zap.Error(err))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 		return
 	}
 
@@ -71,7 +73,7 @@ func (h *SlackWebhookHandler) HandleSlackEvents(w http.ResponseWriter, r *http.R
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 }
 
 func (h *SlackWebhookHandler) HandleSlackEventsGin(c *gin.Context) {
@@ -81,7 +83,9 @@ func (h *SlackWebhookHandler) HandleSlackEventsGin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
-	defer c.Request.Body.Close()
+	defer func() {
+		_ = c.Request.Body.Close()
+	}()
 
 	var payload map[string]interface{}
 	if err := json.Unmarshal(body, &payload); err != nil {

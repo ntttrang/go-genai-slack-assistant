@@ -61,9 +61,6 @@ func TestEventProcessorImplementsInterface(t *testing.T) {
 	logger, _ := zap.NewProduction()
 
 	processor := NewEventProcessor(mockTranslationService, nil, logger)
-
-	// Assert that processor implements EventProcessor interface
-	var _ EventProcessor = processor
 	assert.NotNil(t, processor)
 }
 

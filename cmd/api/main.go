@@ -34,7 +34,9 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize logger: %v", err))
 	}
-	defer log.Sync()
+	defer func() {
+		_ = log.Sync()
+	}()
 
 	log.Info("Starting Slack Translation Bot...")
 
@@ -67,7 +69,9 @@ func main() {
 		log.Error("Failed to get sql.DB from GORM", zap.Error(err))
 		os.Exit(1)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		_ = sqlDB.Close()
+	}()
 	log.Info("Database connected successfully")
 
 	// Initialize cache (which also connects to Redis)
@@ -84,7 +88,9 @@ func main() {
 		Password: cfg.Redis.Password,
 		DB:       0,
 	})
-	defer redisClient.Close()
+	defer func() {
+		_ = redisClient.Close()
+	}()
 
 	// Initialize metrics
 	metricsManager := metrics.NewMetrics()
@@ -95,7 +101,9 @@ func main() {
 		log.Error("Failed to initialize Gemini provider", zap.Error(err))
 		os.Exit(1)
 	}
-	defer geminiProvider.Close()
+	defer func() {
+		_ = geminiProvider.Close()
+	}()
 	log.Info("Gemini provider initialized successfully")
 
 	// Initialize cache instance
@@ -121,7 +129,7 @@ func main() {
 	slackClient := slackservice.NewSlackClient(cfg.Slack.BotToken)
 
 	// Initialize event processor (implements slack.EventProcessor interface)
-	var eventProc slackservice.EventProcessor = slackservice.NewEventProcessor(translationUseCase, slackClient, log)
+	eventProc := slackservice.NewEventProcessor(translationUseCase, slackClient, log)
 
 	// Initialize worker pool for ordered message processing
 	workerPool := queue.NewWorkerPool(

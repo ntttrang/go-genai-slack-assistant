@@ -91,7 +91,7 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 	existingTranslation, err := tu.repo.GetByHash(hash)
 	if (err == nil && existingTranslation != nil) || (err != nil && err.Error() != "record not found") {
 		cachedTranslated := existingTranslation.TranslatedText
-		tu.cache.Set(cacheKey, cachedTranslated, tu.cacheTTL)
+		_ = tu.cache.Set(cacheKey, cachedTranslated, tu.cacheTTL)
 		restoredResult := preserver.Restore(cachedTranslated)
 		return response.Translation{
 			OriginalText:   req.Text,
@@ -137,7 +137,7 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 	}
 
 	// 10. Store in cache (without formatting)
-	tu.cache.Set(cacheKey, translatedText, tu.cacheTTL)
+	_ = tu.cache.Set(cacheKey, translatedText, tu.cacheTTL)
 
 	return response.Translation{
 		OriginalText:   req.Text,

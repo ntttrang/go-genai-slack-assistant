@@ -37,7 +37,7 @@ func (cu *ChannelUseCase) CreateChannelConfig(config *model.ChannelConfig) error
 
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("channel_config:%s", config.ChannelID)
-	cu.cache.Delete(cacheKey)
+	_ = cu.cache.Delete(cacheKey)
 
 	return nil
 }
@@ -46,11 +46,7 @@ func (cu *ChannelUseCase) GetChannelConfig(channelID string) (*model.ChannelConf
 	cacheKey := fmt.Sprintf("channel_config:%s", channelID)
 
 	// Try cache first
-	cachedJSON, err := cu.cache.Get(cacheKey)
-	if err == nil && cachedJSON != "" {
-		// For simplicity, skip cache deserialization
-		// In production, would use proper JSON serialization
-	}
+	_, _ = cu.cache.Get(cacheKey)
 
 	// Get from database
 	config, err := cu.repo.GetByChannelID(channelID)
@@ -59,7 +55,7 @@ func (cu *ChannelUseCase) GetChannelConfig(channelID string) (*model.ChannelConf
 	}
 
 	// Cache the result (1 hour TTL)
-	cu.cache.Set(cacheKey, "1", 3600)
+	_ = cu.cache.Set(cacheKey, "1", 3600)
 
 	return config, nil
 }
@@ -71,7 +67,7 @@ func (cu *ChannelUseCase) UpdateChannelConfig(config *model.ChannelConfig) error
 
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("channel_config:%s", config.ChannelID)
-	cu.cache.Delete(cacheKey)
+	_ = cu.cache.Delete(cacheKey)
 
 	return nil
 }
@@ -83,7 +79,7 @@ func (cu *ChannelUseCase) DeleteChannelConfig(channelID string) error {
 
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("channel_config:%s", channelID)
-	cu.cache.Delete(cacheKey)
+	_ = cu.cache.Delete(cacheKey)
 
 	return nil
 }

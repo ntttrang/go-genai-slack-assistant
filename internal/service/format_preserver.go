@@ -10,7 +10,6 @@ type FormatPreserver struct {
 	emojis     map[string]string
 	codeBlocks map[string]string
 	links      map[string]string
-	lineBreaks []int
 	lists      map[string]string // stores list markers with indentation
 	usernames  map[string]string // stores user ID to username mapping for mention conversion
 }
@@ -149,9 +148,7 @@ func (fp *FormatPreserver) restoreEmojis(text string) string {
 	return result
 }
 
-func (fp *FormatPreserver) restoreLinks(text string) string {
-	return fp.restoreLinksWithOptions(text, false)
-}
+
 
 func (fp *FormatPreserver) restoreLinksWithOptions(text string, convertUserMentions bool) string {
 	result := text

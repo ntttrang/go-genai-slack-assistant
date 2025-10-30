@@ -27,7 +27,9 @@ func TestSlackWebhookHandlerURLVerification(t *testing.T) {
 	
 	// Create worker pool with mock processor
 	workerPool := queue.NewWorkerPool(mockEventProc, 10, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	handler := NewSlackWebhookHandler(workerPool, logger)
 
@@ -62,7 +64,9 @@ func TestSlackWebhookHandlerEventCallback(t *testing.T) {
 	
 	// Create worker pool with mock processor
 	workerPool := queue.NewWorkerPool(mockEventProc, 10, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	handler := NewSlackWebhookHandler(workerPool, logger)
 
@@ -112,7 +116,9 @@ func TestSlackWebhookHandlerInvalidJSON(t *testing.T) {
 	
 	// Create worker pool with mock processor
 	workerPool := queue.NewWorkerPool(mockEventProc, 10, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	handler := NewSlackWebhookHandler(workerPool, logger)
 
@@ -138,7 +144,9 @@ func TestSlackWebhookHandlerImplementsCorrectSignature(t *testing.T) {
 	
 	// Create worker pool with mock processor
 	workerPool := queue.NewWorkerPool(mockEventProc, 10, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	handler := NewSlackWebhookHandler(workerPool, logger)
 

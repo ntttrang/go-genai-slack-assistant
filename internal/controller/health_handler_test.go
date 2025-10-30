@@ -19,7 +19,9 @@ import (
 func TestNewHealthCheckHandler(t *testing.T) {
 	db, _, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	redisClient, _ := redismock.NewClientMock()
 	logger, _ := zap.NewProduction()
@@ -37,7 +39,9 @@ func TestHealthCheckHandler_HandleHealthGin_AllHealthy(t *testing.T) {
 
 	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	redisClient, redisMock := redismock.NewClientMock()
 	logger, _ := zap.NewProduction()
@@ -71,7 +75,9 @@ func TestHealthCheckHandler_HandleHealthGin_DatabaseUnhealthy(t *testing.T) {
 
 	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	redisClient, redisMock := redismock.NewClientMock()
 	logger, _ := zap.NewProduction()
@@ -105,7 +111,9 @@ func TestHealthCheckHandler_HandleHealthGin_RedisUnhealthy(t *testing.T) {
 
 	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	redisClient, redisMock := redismock.NewClientMock()
 	logger, _ := zap.NewProduction()
@@ -164,7 +172,9 @@ func TestHealthCheckHandler_HandleHealthGin_NilRedis(t *testing.T) {
 
 	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	logger, _ := zap.NewProduction()
 
@@ -190,7 +200,9 @@ func TestHealthCheckHandler_HandleHealthGin_NilRedis(t *testing.T) {
 func TestHealthCheckHandler_CheckDatabase(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	logger, _ := zap.NewProduction()
 	handler := NewHealthCheckHandler(db, nil, logger)
@@ -251,7 +263,9 @@ func TestHealthCheckHandler_CheckRedis(t *testing.T) {
 func TestHealthCheckHandler_HandleHealth_StandardHTTP(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	redisClient, redisMock := redismock.NewClientMock()
 	logger, _ := zap.NewProduction()

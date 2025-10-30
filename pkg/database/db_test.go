@@ -66,7 +66,9 @@ func TestDatabasePing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() {
+				_ = db.Close()
+			}()
 
 			tt.setupMock(mock)
 
@@ -173,7 +175,9 @@ func TestDatabaseConnectionRetries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() {
+				_ = db.Close()
+			}()
 
 			tt.setupMock(mock)
 
@@ -233,7 +237,9 @@ func TestDatabaseQueryExecution(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() {
+				_ = db.Close()
+			}()
 
 			tt.setupMock(mock)
 
@@ -292,7 +298,9 @@ func TestDatabaseTransactions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() {
+				_ = db.Close()
+			}()
 
 			tt.setupMock(mock)
 

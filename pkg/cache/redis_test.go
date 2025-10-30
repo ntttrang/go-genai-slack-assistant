@@ -45,7 +45,7 @@ func TestRedisCache_Delete(t *testing.T) {
 	cache, err := NewRedisCache("127.0.0.1", mr.Server().Addr().Port, "")
 	assert.NoError(t, err)
 
-	cache.Set("test-key", "test-value", 3600)
+	_ = cache.Set("test-key", "test-value", 3600)
 	err = cache.Delete("test-key")
 	assert.NoError(t, err)
 
@@ -61,7 +61,7 @@ func TestRedisCache_Exists_True(t *testing.T) {
 	cache, err := NewRedisCache("127.0.0.1", mr.Server().Addr().Port, "")
 	assert.NoError(t, err)
 
-	cache.Set("test-key", "test-value", 3600)
+	_ = cache.Set("test-key", "test-value", 3600)
 	exists, err := cache.Exists("test-key")
 	assert.NoError(t, err)
 	assert.True(t, exists)
@@ -109,9 +109,9 @@ func TestRedisCache_MultipleOperations(t *testing.T) {
 	cache, err := NewRedisCache("127.0.0.1", mr.Server().Addr().Port, "")
 	assert.NoError(t, err)
 
-	cache.Set("key1", "value1", 3600)
-	cache.Set("key2", "value2", 3600)
-	cache.Set("key3", "value3", 3600)
+	_ = cache.Set("key1", "value1", 3600)
+	_ = cache.Set("key2", "value2", 3600)
+	_ = cache.Set("key3", "value3", 3600)
 
 	val1, _ := cache.Get("key1")
 	val2, _ := cache.Get("key2")
@@ -121,7 +121,7 @@ func TestRedisCache_MultipleOperations(t *testing.T) {
 	assert.Equal(t, "value2", val2)
 	assert.Equal(t, "value3", val3)
 
-	cache.Delete("key2")
+	_ = cache.Delete("key2")
 
 	_, err = cache.Get("key2")
 	assert.Error(t, err)
@@ -140,11 +140,11 @@ func TestRedisCache_UpdateValue(t *testing.T) {
 	cache, err := NewRedisCache("127.0.0.1", mr.Server().Addr().Port, "")
 	assert.NoError(t, err)
 
-	cache.Set("test-key", "initial-value", 3600)
+	_ = cache.Set("test-key", "initial-value", 3600)
 	val, _ := cache.Get("test-key")
 	assert.Equal(t, "initial-value", val)
 
-	cache.Set("test-key", "updated-value", 3600)
+	_ = cache.Set("test-key", "updated-value", 3600)
 	val, _ = cache.Get("test-key")
 	assert.Equal(t, "updated-value", val)
 }

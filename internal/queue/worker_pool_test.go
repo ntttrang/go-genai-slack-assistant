@@ -60,7 +60,9 @@ func TestWorkerPool_MessageOrdering(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	processor := newMockEventProcessor(10 * time.Millisecond)
 	workerPool := NewWorkerPool(processor, 10, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	// Create 3 messages from same user in same channel
 	events := []*model.MessageEvent{
@@ -116,7 +118,9 @@ func TestWorkerPool_ParallelProcessing(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	processor := newMockEventProcessor(50 * time.Millisecond)
 	workerPool := NewWorkerPool(processor, 10, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	// Create messages from two different users in the same channel
 	// With channel-level ordering, they will be processed sequentially in a single queue
@@ -162,7 +166,9 @@ func TestWorkerPool_WorkerSpawning(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	processor := newMockEventProcessor(0)
 	workerPool := NewWorkerPool(processor, 10, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	// Initially no queues
 	if workerPool.GetQueueCount() != 0 {
@@ -210,7 +216,9 @@ func TestWorkerPool_IdleCleanup(t *testing.T) {
 	processor := newMockEventProcessor(0)
 	// Use very short idle timeout for testing
 	workerPool := NewWorkerPool(processor, 10, 100*time.Millisecond, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	// Enqueue a message
 	event := &model.MessageEvent{
@@ -304,7 +312,9 @@ func TestWorkerPool_BufferFull(t *testing.T) {
 	processor := newMockEventProcessor(100 * time.Millisecond)
 	// Small buffer
 	workerPool := NewWorkerPool(processor, 2, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	// Enqueue 3 messages rapidly (buffer is 2)
 	for i := 0; i < 3; i++ {
@@ -345,7 +355,9 @@ func TestWorkerPool_EventDeduplication(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	processor := newMockEventProcessor(0)
 	workerPool := NewWorkerPool(processor, 10, 1*time.Minute, logger)
-	defer workerPool.Shutdown(5 * time.Second)
+	defer func() {
+		_ = workerPool.Shutdown(5 * time.Second)
+	}()
 
 	// Create two events with the same event_id (simulating Slack retry)
 	event1 := &model.MessageEvent{
