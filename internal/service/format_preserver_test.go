@@ -257,3 +257,75 @@ func TestFormatPreserver_Reset(t *testing.T) {
 			len(preserver.emojis), len(preserver.codeBlocks))
 	}
 }
+
+func TestFormatPreserver_ConvertUserMentions(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		mappings map[string]string
+		expected string
+	}{
+		{
+			name:     "Message with single user mention",
+			input:    "Hello <@U12345678> how are you?",
+			mappings: map[string]string{"U12345678": "john"},
+			expected: "Hello john how are you?",
+		},
+		{
+			name:     "Message with multiple user mentions",
+			input:    "Hi <@U12345678> and <@U87654321>, let's talk",
+			mappings: map[string]string{"U12345678": "alice", "U87654321": "bob"},
+			expected: "Hi alice and bob, let's talk",
+		},
+		{
+			name:     "Message with user mention and other content",
+			input:    "<@U12345678> check this :smile: https://example.com",
+			mappings: map[string]string{"U12345678": "carol"},
+			expected: "carol check this :smile: https://example.com",
+		},
+		{
+			name:     "Message without user mentions",
+			input:    "Hello world, this is a message",
+			mappings: map[string]string{},
+			expected: "Hello world, this is a message",
+		},
+		{
+			name:     "User mention with no mapping (fallback to ID)",
+			input:    "<@U12345678> check this",
+			mappings: map[string]string{},
+			expected: "U12345678 check this",
+		},
+		{
+			name:     "User mention with channel reference",
+			input:    "<@U12345678> <#C87654321|general>",
+			mappings: map[string]string{"U12345678": "dave"},
+			expected: "dave <#C87654321|general>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			preserver := NewFormatPreserver()
+			preserver.SetUsernameMappings(tt.mappings)
+			cleaned := preserver.Extract(tt.input)
+			restored := preserver.RestoreWithOptions(cleaned, true)
+
+			if restored != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, restored)
+			}
+		})
+	}
+}
+
+func TestFormatPreserver_RestoreWithOptions_KeepMentions(t *testing.T) {
+	input := "Hey <@U12345678>, check this"
+	expected := input
+
+	preserver := NewFormatPreserver()
+	cleaned := preserver.Extract(input)
+	restored := preserver.RestoreWithOptions(cleaned, false)
+
+	if restored != expected {
+		t.Errorf("expected %q, got %q", expected, restored)
+	}
+}

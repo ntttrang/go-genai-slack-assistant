@@ -12,6 +12,7 @@ type FormatPreserver struct {
 	links      map[string]string
 	lineBreaks []int
 	lists      map[string]string // stores list markers with indentation
+	usernames  map[string]string // stores user ID to username mapping for mention conversion
 }
 
 func NewFormatPreserver() *FormatPreserver {
@@ -20,6 +21,7 @@ func NewFormatPreserver() *FormatPreserver {
 		codeBlocks: make(map[string]string),
 		links:      make(map[string]string),
 		lists:      make(map[string]string),
+		usernames:  make(map[string]string),
 	}
 }
 
@@ -45,14 +47,19 @@ func (fp *FormatPreserver) Extract(text string) string {
 
 // Restore applies all formatting back to translated text
 func (fp *FormatPreserver) Restore(text string) string {
+	return fp.RestoreWithOptions(text, false)
+}
+
+// RestoreWithOptions applies all formatting back with option to convert user mentions to plain text
+func (fp *FormatPreserver) RestoreWithOptions(text string, convertUserMentions bool) string {
 	// 1. Restore line breaks
 	text = fp.restoreLineBreaks(text)
 	
 	// 2. Restore emoji codes
 	text = fp.restoreEmojis(text)
 	
-	// 3. Restore links
-	text = fp.restoreLinks(text)
+	// 3. Restore links (optionally converting user mentions to plain text)
+	text = fp.restoreLinksWithOptions(text, convertUserMentions)
 	
 	// 4. Restore code blocks
 	text = fp.restoreCodeBlocks(text)
@@ -143,11 +150,32 @@ func (fp *FormatPreserver) restoreEmojis(text string) string {
 }
 
 func (fp *FormatPreserver) restoreLinks(text string) string {
+	return fp.restoreLinksWithOptions(text, false)
+}
+
+func (fp *FormatPreserver) restoreLinksWithOptions(text string, convertUserMentions bool) string {
 	result := text
+	userMentionPattern := regexp.MustCompile(`<@(U[A-Z0-9]+)>`)
+	
 	for placeholder, link := range fp.links {
-		result = strings.ReplaceAll(result, placeholder, link)
+		if convertUserMentions && userMentionPattern.MatchString(link) {
+			matches := userMentionPattern.FindStringSubmatch(link)
+			if len(matches) > 1 {
+				userID := matches[1]
+				username := fp.usernames[userID]
+				if username == "" {
+					username = userID
+				}
+				result = strings.ReplaceAll(result, placeholder, username)
+			} else {
+				result = strings.ReplaceAll(result, placeholder, link)
+			}
+		} else {
+			result = strings.ReplaceAll(result, placeholder, link)
+		}
 	}
-	return result
+	
+	return strings.TrimSpace(result)
 }
 
 func (fp *FormatPreserver) restoreCodeBlocks(text string) string {
@@ -166,10 +194,37 @@ func (fp *FormatPreserver) restoreLists(text string) string {
 	return result
 }
 
+// SetUsernameMappings stores the user ID to username mapping for mention conversion
+func (fp *FormatPreserver) SetUsernameMappings(mappings map[string]string) {
+	fp.usernames = mappings
+}
+
+// ExtractUserIDsFromText extracts all user IDs from Slack mentions in the text
+func (fp *FormatPreserver) ExtractUserIDsFromText(text string) []string {
+	userMentionPattern := regexp.MustCompile(`<@(U[A-Z0-9]+)>`)
+	matches := userMentionPattern.FindAllStringSubmatch(text, -1)
+	
+	userIDs := make([]string, 0)
+	seen := make(map[string]bool)
+	
+	for _, match := range matches {
+		if len(match) > 1 {
+			userID := match[1]
+			if !seen[userID] {
+				userIDs = append(userIDs, userID)
+				seen[userID] = true
+			}
+		}
+	}
+	
+	return userIDs
+}
+
 // Reset clears all stored patterns for reuse
 func (fp *FormatPreserver) Reset() {
 	fp.emojis = make(map[string]string)
 	fp.codeBlocks = make(map[string]string)
 	fp.links = make(map[string]string)
 	fp.lists = make(map[string]string)
+	fp.usernames = make(map[string]string)
 }
