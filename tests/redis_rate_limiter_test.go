@@ -2,43 +2,26 @@ package tests
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/ratelimit"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// getRedisAddr returns the Redis address from environment or default
-func getRedisAddr() string {
-	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
-		return addr
-	}
-	return "127.0.0.1:6379"
-}
-
-// skipIfRedisUnavailable checks if Redis is available and skips the test if not
-func skipIfRedisUnavailable(t *testing.T, client *redis.Client) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	
-	if err := client.Ping(ctx).Err(); err != nil {
-		t.Skipf("Redis not available, skipping test: %v", err)
-	}
-}
-
 func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
 	client := redis.NewClient(&redis.Options{
-		Addr: getRedisAddr(),
+		Addr: mr.Addr(),
 	})
 	defer func() { _ = client.Close() }()
-	
-	skipIfRedisUnavailable(t, client)
 
-	// Cleanup
 	ctx := context.Background()
 	client.FlushDB(ctx)
 
@@ -52,19 +35,21 @@ func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {
 }
 
 func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
 	client := redis.NewClient(&redis.Options{
-		Addr: getRedisAddr(),
+		Addr: mr.Addr(),
 	})
 	defer func() { _ = client.Close() }()
-	
-	skipIfRedisUnavailable(t, client)
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
 
 	limiter := ratelimit.NewRedisRateLimiter(client)
 
-	err := limiter.IncrementUserLimit("user123")
+	err = limiter.IncrementUserLimit("user123")
 	assert.NoError(t, err)
 
 	allowed, remaining, _, err := limiter.CheckUserLimit("user123")
@@ -74,12 +59,14 @@ func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
 }
 
 func TestRedisRateLimiter_CheckChannelLimit_FirstRequest(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
 	client := redis.NewClient(&redis.Options{
-		Addr: getRedisAddr(),
+		Addr: mr.Addr(),
 	})
 	defer func() { _ = client.Close() }()
-	
-	skipIfRedisUnavailable(t, client)
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -94,12 +81,14 @@ func TestRedisRateLimiter_CheckChannelLimit_FirstRequest(t *testing.T) {
 }
 
 func TestRedisRateLimiter_RateLimitExceeded(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
 	client := redis.NewClient(&redis.Options{
-		Addr: getRedisAddr(),
+		Addr: mr.Addr(),
 	})
 	defer func() { _ = client.Close() }()
-	
-	skipIfRedisUnavailable(t, client)
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -121,12 +110,14 @@ func TestRedisRateLimiter_RateLimitExceeded(t *testing.T) {
 }
 
 func TestRedisRateLimiter_TTLExpiration(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
 	client := redis.NewClient(&redis.Options{
-		Addr: getRedisAddr(),
+		Addr: mr.Addr(),
 	})
 	defer func() { _ = client.Close() }()
-	
-	skipIfRedisUnavailable(t, client)
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -137,8 +128,8 @@ func TestRedisRateLimiter_TTLExpiration(t *testing.T) {
 	key := "rate_limit:user:testuser"
 	client.Set(ctx, key, "10", time.Second)
 
-	// Wait for TTL to expire
-	time.Sleep(2 * time.Second)
+	// Fast forward time in miniredis instead of sleeping
+	mr.FastForward(2 * time.Second)
 
 	allowed, _, _, err := limiter.CheckUserLimit("testuser")
 
