@@ -11,13 +11,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// skipIfRedisUnavailable checks if Redis is available and skips the test if not
+func skipIfRedisUnavailable(t *testing.T, client *redis.Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	
+	if err := client.Ping(ctx).Err(); err != nil {
+		t.Skipf("Redis not available, skipping test: %v", err)
+	}
+}
+
 func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {
-	// Skip if Redis not available
 	client := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
-
 	defer func() { _ = client.Close() }()
+	
+	skipIfRedisUnavailable(t, client)
 
 	// Cleanup
 	ctx := context.Background()
@@ -36,8 +46,9 @@ func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
-
 	defer func() { _ = client.Close() }()
+	
+	skipIfRedisUnavailable(t, client)
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -57,8 +68,9 @@ func TestRedisRateLimiter_CheckChannelLimit_FirstRequest(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
-
 	defer func() { _ = client.Close() }()
+	
+	skipIfRedisUnavailable(t, client)
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -76,8 +88,9 @@ func TestRedisRateLimiter_RateLimitExceeded(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
-
 	defer func() { _ = client.Close() }()
+	
+	skipIfRedisUnavailable(t, client)
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
@@ -102,8 +115,9 @@ func TestRedisRateLimiter_TTLExpiration(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
-
 	defer func() { _ = client.Close() }()
+	
+	skipIfRedisUnavailable(t, client)
 
 	ctx := context.Background()
 	client.FlushDB(ctx)
