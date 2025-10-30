@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -10,6 +11,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// getRedisAddr returns the Redis address from environment or default
+func getRedisAddr() string {
+	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
+		return addr
+	}
+	return "127.0.0.1:6379"
+}
 
 // skipIfRedisUnavailable checks if Redis is available and skips the test if not
 func skipIfRedisUnavailable(t *testing.T, client *redis.Client) {
@@ -23,7 +32,7 @@ func skipIfRedisUnavailable(t *testing.T, client *redis.Client) {
 
 func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: getRedisAddr(),
 	})
 	defer func() { _ = client.Close() }()
 	
@@ -44,7 +53,7 @@ func TestRedisRateLimiter_CheckUserLimit_FirstRequest(t *testing.T) {
 
 func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: getRedisAddr(),
 	})
 	defer func() { _ = client.Close() }()
 	
@@ -66,7 +75,7 @@ func TestRedisRateLimiter_IncrementUserLimit(t *testing.T) {
 
 func TestRedisRateLimiter_CheckChannelLimit_FirstRequest(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: getRedisAddr(),
 	})
 	defer func() { _ = client.Close() }()
 	
@@ -86,7 +95,7 @@ func TestRedisRateLimiter_CheckChannelLimit_FirstRequest(t *testing.T) {
 
 func TestRedisRateLimiter_RateLimitExceeded(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: getRedisAddr(),
 	})
 	defer func() { _ = client.Close() }()
 	
@@ -113,7 +122,7 @@ func TestRedisRateLimiter_RateLimitExceeded(t *testing.T) {
 
 func TestRedisRateLimiter_TTLExpiration(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: getRedisAddr(),
 	})
 	defer func() { _ = client.Close() }()
 	
