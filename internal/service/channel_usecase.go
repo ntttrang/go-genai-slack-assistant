@@ -55,7 +55,11 @@ func (cu *ChannelUseCase) GetChannelConfig(channelID string) (*model.ChannelConf
 	}
 
 	// Cache the result (1 hour TTL)
-	_ = cu.cache.Set(cacheKey, "1", 3600)
+	cacheValue := "0"
+	if config.Enabled {
+		cacheValue = "1"
+	}
+	_ = cu.cache.Set(cacheKey, cacheValue, 3600)
 
 	return config, nil
 }
