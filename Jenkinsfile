@@ -29,6 +29,7 @@ pipeline {
         // Slack Notification
         SLACK_CHANNEL = '#jenkins-cicd'
         SLACK_BOT_TOKEN = 'SLACK_BOT_TOKEN'
+
     }
 
     stages {
@@ -105,21 +106,21 @@ pipeline {
                     which golangci-lint > /dev/null || (echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
                     golangci-lint run ./...
                 '''
-                echo 'Running SonarQube ...'
-                sh '''
-                    export PATH="${GOPATH}/bin:${PATH}"
-                    which sonar-scanner > /dev/null || (echo "Installing sonar-scanner..."; curl -sL https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip -o sonar-scanner.zip && unzip sonar-scanner.zip && mv sonar-scanner-5.0.1.3006-linux "${GOPATH}/bin/sonar-scanner" && rm sonar-scanner.zip)
-                    sonar-scanner \
-                        -Dsonar.projectKey=go-genai-slack-assistant \
-                        -Dsonar.sources=. \
-                        -Dsonar.exclusions=**/*_test.go,**/vendor/**,**/.gomodcache/**,**/node_modules/** \
-                        -Dsonar.tests=./tests \
-                        -Dsonar.test.inclusions=**/*_test.go \
-                        -Dsonar.coverage.exclusions=**/*_test.go \
-                        -Dsonar.coverageReportPaths=coverage.out \
-                        -Dsonar.go.coverage.reportPaths=coverage.out || true
-                    echo "SonarQube scan completed"
-                '''
+                echo 'Running SonarCloud scan...'
+                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+                    withSonarQubeEnv('SonarCloud') {
+                        sh '''
+                            sonar-scanner \
+                                -Dsonar.organization=go-workspace \
+                                -Dsonar.projectKey=go-pkey \
+                                -Dsonar.sources=. \
+                                -Dsonar.host.url=https://sonarcloud.io \
+                                -Dsonar.token=${SONAR_TOKEN}
+                            echo "SonarCloud scan completed"
+                        '''
+                    }
+                }
+            
             }
         }
 
