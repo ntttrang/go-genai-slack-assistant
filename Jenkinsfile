@@ -105,6 +105,21 @@ pipeline {
                     which golangci-lint > /dev/null || (echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
                     golangci-lint run ./...
                 '''
+                echo 'Running SonarQube ...'
+                sh '''
+                    export PATH="${GOPATH}/bin:${PATH}"
+                    which sonar-scanner > /dev/null || (echo "Installing sonar-scanner..."; curl -sL https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip -o sonar-scanner.zip && unzip sonar-scanner.zip && mv sonar-scanner-5.0.1.3006-linux "${GOPATH}/bin/sonar-scanner" && rm sonar-scanner.zip)
+                    sonar-scanner \
+                        -Dsonar.projectKey=go-genai-slack-assistant \
+                        -Dsonar.sources=. \
+                        -Dsonar.exclusions=**/*_test.go,**/vendor/**,**/.gomodcache/**,**/node_modules/** \
+                        -Dsonar.tests=./tests \
+                        -Dsonar.test.inclusions=**/*_test.go \
+                        -Dsonar.coverage.exclusions=**/*_test.go \
+                        -Dsonar.coverageReportPaths=coverage.out \
+                        -Dsonar.go.coverage.reportPaths=coverage.out || true
+                    echo "SonarQube scan completed"
+                '''
             }
         }
 
@@ -163,6 +178,15 @@ pipeline {
                     gosec -fmt=json -out=gosec-report.json -exclude-dir=.gomodcache -exclude-dir=.go -exclude-dir=.gocache ./... || true
                     echo "Gosec scan completed"
                 '''
+                
+                echo 'Running vulnerability scan with govulncheck...'
+                sh '''
+                    export PATH="${GOPATH}/bin:${PATH}"
+                    which govulncheck > /dev/null || (echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@latest)
+                    govulncheck -json ./... > govulncheck-report.json 2>&1 || true
+                    echo "Govulncheck scan completed"
+                '''
+
                 echo 'Running vulnerability scan with trivy...'
                 sh '''
                     export PATH="${WORKSPACE}/bin:${PATH}"
@@ -389,7 +413,7 @@ pipeline {
             echo '============================================'
             // Archive artifacts BEFORE cleanup
             echo 'Archive artifacts...'
-            archiveArtifacts artifacts: 'bin/**,coverage.out,coverage.html,gosec-report.json,trivy-report.json,trivy-image-report.json', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'bin/**,coverage.out,coverage.html,gosec-report.json,govulncheck-report.json,trivy-report.json,trivy-image-report.json', allowEmptyArchive: true
 
             echo 'Cleaning up Go cache...'
             sh '''
