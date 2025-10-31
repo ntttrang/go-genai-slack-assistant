@@ -10,6 +10,21 @@ pipeline {
         CGO_ENABLED = '0'
         GOOS = 'linux'
         GOARCH = 'amd64'
+        
+        // Docker configuration
+        DOCKER_REGISTRY = 'https://index.docker.io/v1/'
+        DOCKER_IMAGE_NAME = 'docker.io/minhtrang2106/slack-bot'
+        
+        // Render configuration
+        RENDER_API_KEY_CREDENTIALS_ID = 'render-api-key'  // Jenkins credential ID for Render API key
+        RENDER_STAGING_SERVICE_ID = 'srv-d427l5k9c44c7385bou0'
+        RENDER_PRODUCTION_SERVICE_ID = 'srv-yyyyy'
+        RENDER_STAGING_URL = 'https://slack-bot-63-a2ae2ba.onrender.com'
+        RENDER_PRODUCTION_URL = 'https://slack-bot-production.onrender.com'
+
+        // Slack Notification
+        SLACK_CHANNEL = '#jenkins-cicd'
+        SLACK_BOT_TOKEN = 'SLACK_BOT_TOKEN'
     }
 
     stages {
@@ -33,6 +48,10 @@ pipeline {
                     def gitCommit = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                     echo "Branch: ${gitBranch}"
                     echo "Commit: ${gitCommit}"
+                    
+                    // Set BRANCH_NAME for when conditions to work
+                    env.BRANCH_NAME = gitBranch
+                    echo "BRANCH_NAME set to: ${env.BRANCH_NAME}"
                 }
             }
         }
@@ -72,7 +91,7 @@ pipeline {
             }
         }
 
-        stage('4. Lint') {
+        stage('4. Code Quality Scan') {
             steps {
                 echo '============================================'
                 echo 'CI STAGE 4: CODE QUALITY CHECK'
@@ -153,10 +172,221 @@ pipeline {
         // ===============================
         // CD STAGES
         // ===============================
+        stage('9. Build Docker Image') {
+            steps {
+                script {
+                    echo '============================================'
+                    echo 'CD STAGE 9: BUILD DOCKER IMAGE'
+                    echo '============================================'
+                    
+                    def gitCommit = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    def imageTag = "${env.BUILD_NUMBER}-${gitCommit}"
+                    def fullImageName = "${DOCKER_IMAGE_NAME}:${imageTag}"
+                    
+                    echo "Building Docker image: ${fullImageName}"
+                    sh """
+                        docker build -t ${fullImageName} \
+                            --platform linux/amd64 \
+                            --build-arg BUILD_DATE=\$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+                            --build-arg VCS_REF=${gitCommit} \
+                            -f Dockerfile .
+                        docker tag ${fullImageName} ${DOCKER_IMAGE_NAME}:latest
+                        echo "Docker image built successfully: ${fullImageName}"
+                    """
+                    
+                    echo "Scanning Docker image for vulnerabilities with Trivy..."
+                    sh """
+                        export PATH="${WORKSPACE}/bin:\${PATH}"
+                        trivy image --severity HIGH,CRITICAL \
+                            --format json \
+                            --output trivy-image-report.json \
+                            ${fullImageName} || true
+                        echo "Image scan completed"
+                    """
+                    
+                    env.DOCKER_IMAGE = fullImageName
+                    env.DOCKER_IMAGE_LATEST = "${DOCKER_IMAGE_NAME}:latest"
+                    
+                    echo "Docker image ready: ${env.DOCKER_IMAGE}"
+                }
+            }
+        }
+
+        stage('10. Push to Docker Hub') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                script {
+                    echo '============================================'
+                    echo 'CD STAGE 10: PUSH TO DOCKER HUB'
+                    echo '============================================'
+                    
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh '''
+                            echo "Logging into Docker Hub as ${DOCKER_USER}..."
+                            echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                            
+                            echo "Pushing image: ${DOCKER_IMAGE}"
+                            docker push ${DOCKER_IMAGE}
+                            
+                            echo "Pushing latest tag: ${DOCKER_IMAGE_LATEST}"
+                            docker push ${DOCKER_IMAGE_LATEST}
+                            
+                            echo "Successfully pushed images to Docker Hub"
+                            docker logout
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('11. Deploy to Staging') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                script {
+                    env.DEPLOY_ENVIRONMENT = 'staging'
+                    echo '============================================'
+                    echo 'CD STAGE 11: DEPLOY TO STAGING (RENDER)'
+                    echo '============================================'
+                    
+                    withCredentials([
+                        string(credentialsId: env.RENDER_API_KEY_CREDENTIALS_ID, variable: 'RENDER_API_KEY')
+                    ]) {
+                        sh """
+                            echo "Triggering Render staging deployment..."
+                            echo "Image: ${env.DOCKER_IMAGE}"
+                            echo "Service ID: ${RENDER_STAGING_SERVICE_ID}"
+                            
+                            echo "Using Render API for deployment..."
+                            curl -s -w "\\n%{http_code}" -X POST \
+                            "https://api.render.com/v1/services/${RENDER_STAGING_SERVICE_ID}/deploys" \
+                            -H "Authorization: Bearer \${RENDER_API_KEY}" \
+                            -H "Content-Type: application/json" \
+                            -d '{
+                                "clearCache": "do_not_clear", "imageUrl": "'"${env.DOCKER_IMAGE}"'"}'
+                            
+                            echo "Staging deployment initiated successfully"
+                            echo "Waiting 30 seconds for deployment to stabilize..."
+                            sleep 30
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('12. Deploy to Production') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    env.DEPLOY_ENVIRONMENT = 'prod'
+                    echo '============================================'
+                    echo 'CD STAGE 12: DEPLOY TO PRODUCTION (RENDER)'
+                    echo '============================================'
+                    
+                    timeout(time: 15, unit: 'MINUTES') {
+                        input message: 'Deploy to Production?',
+                              ok: 'Deploy',
+                              submitter: 'admin,devops-team'
+                    }
+                    
+                    withCredentials([
+                        string(credentialsId: env.RENDER_API_KEY_CREDENTIALS_ID, variable: 'RENDER_API_KEY')
+                    ]) {
+                        sh """
+                            echo "Triggering Render staging deployment..."
+                            echo "Image: ${env.DOCKER_IMAGE}"
+                            echo "Service ID: ${RENDER_STAGING_SERVICE_ID}"
+                            
+                            echo "Using Render API for deployment..."
+                            curl -s -w "\\n%{http_code}" -X POST \
+                            "https://api.render.com/v1/services/${RENDER_STAGING_SERVICE_ID}/deploys" \
+                            -H "Authorization: Bearer \${RENDER_API_KEY}" \
+                            -H "Content-Type: application/json" \
+                            -d '{
+                                "clearCache": "do_not_clear", "imageUrl": "'"${env.DOCKER_IMAGE}"'"}'
+                            
+                            echo "Staging deployment initiated successfully"
+                            echo "Waiting 30 seconds for deployment to stabilize..."
+                            sleep 30
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('13. Health Check') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                script {
+                    echo '============================================'
+                    echo 'CD STAGE 13: HEALTH CHECK'
+                    echo '============================================'
+                    
+                    def healthUrl = ""
+                    if (env.BRANCH_NAME == 'main') {
+                        healthUrl = "${RENDER_PRODUCTION_URL}/health"
+                        echo "Checking production environment: ${healthUrl}"
+                    } else if (env.BRANCH_NAME == 'develop') {
+                        healthUrl = "${RENDER_STAGING_URL}/health"
+                        echo "Checking staging environment: ${healthUrl}"
+                    }
+                    
+                    if (healthUrl) {
+                        retry(5) {
+                            sh """
+                                echo "Performing health check on: ${healthUrl}"
+                                
+                                response=\$(curl -s -o /dev/null -w "%{http_code}" ${healthUrl})
+                                
+                                if [ "\$response" = "200" ]; then
+                                    echo "✓ Health check passed (HTTP 200)"
+                                    
+                                    # Get detailed health status
+                                    echo "Fetching detailed health status..."
+                                    curl -s ${healthUrl} | python3 -m json.tool || curl -s ${healthUrl}
+                                    
+                                    exit 0
+                                else
+                                    echo "✗ Health check failed (HTTP \$response)"
+                                    echo "Retrying in 10 seconds..."
+                                    sleep 10
+                                    exit 1
+                                fi
+                            """
+                        }
+                        echo "Deployment verified successfully!"
+                    }
+                }
+            }
+        }
     }
 
     post {
         always {
+            echo '============================================'
+            echo 'POST-BUILD: CLEANUP'
+            echo '============================================'
+            // Archive artifacts BEFORE cleanup
+            echo 'Archive artifacts...'
+            archiveArtifacts artifacts: 'bin/**,coverage.out,coverage.html,gosec-report.json,trivy-report.json,trivy-image-report.json', allowEmptyArchive: true
+
             echo 'Cleaning up Go cache...'
             sh '''
                 chmod -R u+w .gomodcache .gocache .go 2>/dev/null || true
@@ -165,13 +395,73 @@ pipeline {
         }
 
         success {
-            echo 'CI pipeline completed successfully'
-            archiveArtifacts artifacts: 'bin/**,coverage.out,coverage.html,gosec-report.json,trivy-report.json,trivy-image-report.json', allowEmptyArchive: true
+            echo 'CI/CD pipeline completed successfully'
+            script {
+                if (env.DOCKER_IMAGE) {
+                    echo "Docker image built and pushed: ${env.DOCKER_IMAGE}"
+                }
+                def message = """
+                    ✅ *BUILD SUCCESS*
+                    Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+                    Branch: ${env.BRANCH_NAME}
+                    Stage: ${env.DEPLOY_ENVIRONMENT}
+                    Duration: ${currentBuild.durationString}
+                    Build URL: ${env.BUILD_URL}
+                """.stripIndent()
+                
+                // Send Slack notifications via Slack Plugin
+                slackSend(
+                    channel: env.SLACK_CHANNEL,
+                    color: 'good',
+                    message: message,
+                    tokenCredentialId: env.SLACK_BOT_TOKEN,
+                    botUser: true
+                )
+            }
         }
 
         failure {
-            echo 'CI pipeline failed'
-            archiveArtifacts artifacts: 'coverage.out,gosec-report.json,trivy-report.json,trivy-image-report.json', allowEmptyArchive: true
+            echo 'CI/CD pipeline failed'
+            script {
+                if (env.DOCKER_IMAGE) {
+                    echo "Docker image that failed: ${env.DOCKER_IMAGE}"
+                }
+                def message = """
+                    ❌ *BUILD FAILED*
+                    Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+                    Branch: ${env.BRANCH_NAME}
+                    Stage: ${env.DEPLOY_ENVIRONMENT}
+                    Duration: ${currentBuild.durationString}
+                    Build URL: ${env.BUILD_URL}
+                """.stripIndent()
+                
+                // Send Slack notifications via Slack Plugin
+                slackSend(
+                    channel: env.SLACK_CHANNEL,
+                    color: 'danger',
+                    message: message,
+                    tokenCredentialId: env.SLACK_BOT_TOKEN,
+                    botUser: true
+                )
+            }
+        }
+        aborted {
+            echo '🛑 Pipeline was aborted!'
+            script {
+                def message = """
+                    🛑 *BUILD ABORTED*
+                    Build URL: ${env.BUILD_URL}
+                """.stripIndent()
+                
+                // Send Slack notifications via Slack Plugin
+                slackSend(
+                    channel: env.SLACK_CHANNEL,
+                    color: 'warning',
+                    message: message,
+                    tokenCredentialId: env.SLACK_BOT_TOKEN,
+                    botUser: true
+                )
+            }
         }
     }
 }
