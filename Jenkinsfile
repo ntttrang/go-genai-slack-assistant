@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()
+    }
+
     environment {
         GO_VERSION = '1.24.1'
         GOPATH = "${env.WORKSPACE}/.go"
