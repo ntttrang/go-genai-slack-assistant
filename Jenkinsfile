@@ -30,6 +30,8 @@ pipeline {
         SLACK_CHANNEL = '#jenkins-cicd'
         SLACK_BOT_TOKEN = 'SLACK_BOT_TOKEN'
 
+        SONAR_TOKEN = 'sonarcloud-token'
+
     }
 
     stages {
@@ -60,7 +62,6 @@ pipeline {
                 }
             }
         }
-
         stage('2. Environment Setup') {
             steps {
                 echo '============================================'
@@ -96,64 +97,106 @@ pipeline {
             }
         }
 
-        stage('4. Code Quality Scan') {
-            steps {
-                echo '============================================'
-                echo 'CI STAGE 4: CODE QUALITY CHECK'
-                echo '============================================'
-                echo 'Running code quality checks with golangci-lint...'
-                sh '''
-                    which golangci-lint > /dev/null || (echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-                    golangci-lint run ./...
-                '''
-                echo 'Running SonarCloud scan...'
-                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
-                    withSonarQubeEnv('SonarCloud') {
+        stage('Parallel Quality Checks') {
+            parallel {
+                stage('4. Lint') {
+                    steps {
+                        echo '============================================'
+                        echo 'CI STAGE 4: CODE QUALITY CHECK'
+                        echo '============================================'
+                        echo 'Running code quality checks with golangci-lint...'
                         sh '''
-                            sonar-scanner \
-                                -Dsonar.organization=go-workspace \
-                                -Dsonar.projectKey=go-pkey \
-                                -Dsonar.sources=. \
-                                -Dsonar.host.url=https://sonarcloud.io \
-                                -Dsonar.token=${SONAR_TOKEN}
-                            echo "SonarCloud scan completed"
+                            which golangci-lint > /dev/null || (echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+                            golangci-lint run  --out-format=json ./... > golangci-lint-report.json || true
+                            echo "Golangci-lint scan completed"
                         '''
                     }
                 }
-            
+
+                stage('5.1 Gosec Scan') {
+                    steps {
+                        echo '============================================'
+                        echo 'SECURITY SCAN: Gosec'
+                        echo '============================================'
+                        echo 'Running security scan with gosec...'
+                        sh '''
+                            export PATH="${GOPATH}/bin:${PATH}"
+                            which gosec > /dev/null || (echo "Installing gosec..."; go install github.com/securego/gosec/v2/cmd/gosec@latest)
+                            gosec -fmt=json -out=gosec-report.json -exclude-dir=.gomodcache -exclude-dir=.go -exclude-dir=.gocache ./... || true
+                            echo "Gosec scan completed"
+                        '''
+                    }
+                }
+
+                stage('5.2 Govulncheck Scan') {
+                    steps {
+                        echo '============================================'
+                        echo 'SECURITY SCAN: Govulncheck'
+                        echo '============================================'
+                        echo 'Running vulnerability scan with govulncheck...'
+                        sh '''
+                            export PATH="${GOPATH}/bin:${PATH}"
+                            which govulncheck > /dev/null || (echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@latest)
+                            govulncheck -json ./... > govulncheck-report.json 2>&1 || true
+                            echo "Govulncheck scan completed"
+                        '''
+                    }
+                }
+
+                stage('5.3 Trivy Scan') {
+                    steps {
+                        echo '============================================'
+                        echo 'SECURITY SCAN: Trivy'
+                        echo '============================================'
+                        echo 'Running vulnerability scan with trivy...'
+                        sh '''
+                            export PATH="${WORKSPACE}/bin:${PATH}"
+                            which trivy > /dev/null || (echo "Installing trivy..."; curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ${WORKSPACE}/bin)
+                            trivy fs --severity HIGH,CRITICAL --format json --output trivy-report.json --skip-dirs .gomodcache . || true
+                            echo "Trivy scan completed"
+                        '''
+                    }
+                }
+
+                stage('6. Unit Test') {
+                    steps {
+                        echo '============================================'
+                        echo 'CI STAGE 6: UNIT TESTS'
+                        echo '============================================'
+                        echo 'Running unit tests with coverage...'
+                        sh '''
+                            go test -v -coverprofile=coverage.out $(go list ./... | grep -v '/tests')
+                            go tool cover -html=coverage.out -o coverage.html
+                            echo "Unit tests completed"
+                        '''
+                    }
+                }
             }
         }
-
-        stage('5. Build') {
+        stage('7. Quality Analysis') {
             steps {
                 echo '============================================'
-                echo 'CI STAGE 5: BUILD APPLICATION'
+                echo 'CI STAGE 7: QUALITY ANALYSIS: Sonar Scanner, SonarQube Cloud, Quality Gate'
                 echo '============================================'
-                echo 'Building application...'
-                sh '''
-                    mkdir -p bin
-                    go build -o bin/slack-bot cmd/api/main.go
-                    echo "Build completed successfully"
-                    ls -lah bin/slack-bot
-                '''
+                script {
+                      def scannerHome = tool 'SonarScanner'
+                      withCredentials([string(credentialsId: env.SONAR_TOKEN, variable: 'SONAR_TOKEN')]) {
+                            // This command executes the SonarScanner
+                            sh "${scannerHome}/bin/sonar-scanner"
+                        }
+
+                        // Note: quality gate is available in SonarQube Cloud
+                        // So we don't need to wait for quality gate
+                        // We can just check the quality gate status in SonarQube Cloud
+                        // And if it's not OK, we can fail the pipeline
+                        // And if it's OK, we can continue the pipeline
+                        // And if it's not OK, we can fail the pipeline
+                        // !IMPORTANT: SonarCloud free tier can't use Webhook to notify Jenkins when analysis is complete
+                }
             }
         }
 
-        stage('6. Unit Test') {
-            steps {
-                echo '============================================'
-                echo 'CI STAGE 6: UNIT TESTS'
-                echo '============================================'
-                echo 'Running unit tests with coverage...'
-                sh '''
-                    go test -v -coverprofile=coverage.out $(go list ./... | grep -v '/tests')
-                    go tool cover -html=coverage.out -o coverage.html
-                    echo "Unit tests completed"
-                '''
-            }
-        }
-
-        stage('7. Integration Test') {
+        stage('8. Integration Test') {
             steps {
                 echo '============================================'
                 echo 'CI STAGE 7: INTEGRATION TESTS'
@@ -166,46 +209,30 @@ pipeline {
             }
         }
 
-        stage('8. Security Scan') {
+        stage('9. Build') {
             steps {
                 echo '============================================'
-                echo 'CI STAGE 8: SECURITY VULNERABILITY SCAN'
+                echo 'CI STAGE 8: BUILD APPLICATION'
                 echo '============================================'
-
-                echo 'Running security scan with gosec...'
+                echo 'Building application...'
                 sh '''
-                    export PATH="${GOPATH}/bin:${PATH}"
-                    which gosec > /dev/null || (echo "Installing gosec..."; go install github.com/securego/gosec/v2/cmd/gosec@latest)
-                    gosec -fmt=json -out=gosec-report.json -exclude-dir=.gomodcache -exclude-dir=.go -exclude-dir=.gocache ./... || true
-                    echo "Gosec scan completed"
-                '''
-                
-                echo 'Running vulnerability scan with govulncheck...'
-                sh '''
-                    export PATH="${GOPATH}/bin:${PATH}"
-                    which govulncheck > /dev/null || (echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@latest)
-                    govulncheck -json ./... > govulncheck-report.json 2>&1 || true
-                    echo "Govulncheck scan completed"
-                '''
-
-                echo 'Running vulnerability scan with trivy...'
-                sh '''
-                    export PATH="${WORKSPACE}/bin:${PATH}"
-                    which trivy > /dev/null || (echo "Installing trivy..."; curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ${WORKSPACE}/bin)
-                    trivy fs --severity HIGH,CRITICAL --format json --output trivy-report.json --skip-dirs .gomodcache . || true
-                    echo "Trivy scan completed"
+                    mkdir -p bin
+                    go build -o bin/slack-bot cmd/api/main.go
+                    echo "Build completed successfully"
+                    ls -lah bin/slack-bot
                 '''
             }
         }
 
+
         // ===============================
         // CD STAGES
         // ===============================
-        stage('9. Build Docker Image') {
+        stage('10. Build Docker Image') {
             steps {
                 script {
                     echo '============================================'
-                    echo 'CD STAGE 9: BUILD DOCKER IMAGE'
+                    echo 'CD STAGE 10: BUILD DOCKER IMAGE: docker build, Trivy Image Scan'
                     echo '============================================'
                     
                     def gitCommit = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
@@ -241,7 +268,7 @@ pipeline {
             }
         }
 
-        stage('10. Push to Docker Hub') {
+        stage('11. Push to Docker Hub') {
             when {
                 anyOf {
                     branch 'main'
@@ -251,7 +278,7 @@ pipeline {
             steps {
                 script {
                     echo '============================================'
-                    echo 'CD STAGE 10: PUSH TO DOCKER HUB'
+                    echo 'CD STAGE 11: PUSH TO DOCKER HUB'
                     echo '============================================'
                     
                     withCredentials([usernamePassword(
@@ -277,7 +304,7 @@ pipeline {
             }
         }
 
-        stage('11. Deploy to Staging') {
+        stage('12. Deploy to Staging') {
             when {
                 branch 'develop'
             }
@@ -285,7 +312,7 @@ pipeline {
                 script {
                     env.DEPLOY_ENVIRONMENT = 'staging'
                     echo '============================================'
-                    echo 'CD STAGE 11: DEPLOY TO STAGING (RENDER)'
+                    echo 'CD STAGE 12: DEPLOY TO STAGING (RENDER)'
                     echo '============================================'
                     
                     withCredentials([
@@ -313,15 +340,15 @@ pipeline {
             }
         }
 
-        stage('12. Deploy to Production') {
+        stage('13. Deploy to Production') {
             when {
                 branch 'main'
             }
             steps {
                 script {
-                    env.DEPLOY_ENVIRONMENT = 'prod'
+                    env.DEPLOY_ENVIRONMENT = 'production'
                     echo '============================================'
-                    echo 'CD STAGE 12: DEPLOY TO PRODUCTION (RENDER)'
+                    echo 'CD STAGE 13: DEPLOY TO PRODUCTION (RENDER)'
                     echo '============================================'
                     
                     timeout(time: 15, unit: 'MINUTES') {
@@ -334,19 +361,19 @@ pipeline {
                         string(credentialsId: env.RENDER_API_KEY_CREDENTIALS_ID, variable: 'RENDER_API_KEY')
                     ]) {
                         sh """
-                            echo "Triggering Render staging deployment..."
+                            echo "Triggering Render production deployment..."
                             echo "Image: ${env.DOCKER_IMAGE}"
-                            echo "Service ID: ${RENDER_STAGING_SERVICE_ID}"
+                            echo "Service ID: ${RENDER_PRODUCTION_SERVICE_ID}"
                             
                             echo "Using Render API for deployment..."
                             curl -s -w "\\n%{http_code}" -X POST \
-                            "https://api.render.com/v1/services/${RENDER_STAGING_SERVICE_ID}/deploys" \
+                            "https://api.render.com/v1/services/${RENDER_PRODUCTION_SERVICE_ID}/deploys" \
                             -H "Authorization: Bearer \${RENDER_API_KEY}" \
                             -H "Content-Type: application/json" \
                             -d '{
                                 "clearCache": "do_not_clear", "imageUrl": "'"${env.DOCKER_IMAGE}"'"}'
                             
-                            echo "Staging deployment initiated successfully"
+                            echo "Production deployment initiated successfully"
                             echo "Waiting 30 seconds for deployment to stabilize..."
                             sleep 30
                         """
@@ -355,7 +382,7 @@ pipeline {
             }
         }
 
-        stage('13. Health Check') {
+        stage('14. Health Check') {
             when {
                 anyOf {
                     branch 'main'
@@ -365,7 +392,7 @@ pipeline {
             steps {
                 script {
                     echo '============================================'
-                    echo 'CD STAGE 13: HEALTH CHECK'
+                    echo 'CD STAGE 14: HEALTH CHECK'
                     echo '============================================'
                     
                     def healthUrl = ""
@@ -429,11 +456,12 @@ pipeline {
                 if (env.DOCKER_IMAGE) {
                     echo "Docker image built and pushed: ${env.DOCKER_IMAGE}"
                 }
+                def deployEnv = env.DEPLOY_ENVIRONMENT ?: 'N/A'
                 def message = """
                     ✅ *BUILD SUCCESS*
                     Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
                     Branch: ${env.BRANCH_NAME}
-                    Stage: ${env.DEPLOY_ENVIRONMENT}
+                    Environment: ${deployEnv}
                     Duration: ${currentBuild.durationString}
                     Build URL: ${env.BUILD_URL}
                 """.stripIndent()
@@ -455,11 +483,12 @@ pipeline {
                 if (env.DOCKER_IMAGE) {
                     echo "Docker image that failed: ${env.DOCKER_IMAGE}"
                 }
+                def deployEnv = env.DEPLOY_ENVIRONMENT ?: 'N/A'
                 def message = """
                     ❌ *BUILD FAILED*
                     Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
                     Branch: ${env.BRANCH_NAME}
-                    Stage: ${env.DEPLOY_ENVIRONMENT}
+                    Environment: ${deployEnv}
                     Duration: ${currentBuild.durationString}
                     Build URL: ${env.BUILD_URL}
                 """.stripIndent()
