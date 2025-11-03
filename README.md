@@ -2,7 +2,13 @@
 
 A Slack bot that automatically translates English messages to Vietnamese using Google Gemini AI. Built with Go, Clean Architecture, and containerized for easy deployment.
 
-![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go&logoColor=white)
+[![Release](https://img.shields.io/github/v/release/ntttrang/go-genai-slack-assistant?style=flat&logo=github&color=success)](https://github.com/ntttrang/go-genai-slack-assistant/releases)
+[![Build Status](https://img.shields.io/jenkins/build?jobUrl=https://3dd68e143f08.ngrok-free.app/job/go-genai-slack-assistant&style=flat&logo=jenkins&label=Jenkins)](https://3dd68e143f08.ngrok-free.app/job/go-genai-slack-assistant/)
+[![Docker Image](https://img.shields.io/docker/v/minhtrang2106/slack-bot?style=flat&logo=docker&label=Docker&color=2496ED)](https://hub.docker.com/r/minhtrang2106/slack-bot)
+[![Docker Pulls](https://img.shields.io/docker/pulls/minhtrang2106/slack-bot?style=flat&logo=docker)](https://hub.docker.com/r/minhtrang2106/slack-bot)
+
+
+![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go&logoColor=white)
 ![Gin](https://img.shields.io/badge/Gin-Framework-00ADD8?style=flat&logo=go&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-Database-4479A1?style=flat&logo=mysql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Cache-DC382D?style=flat&logo=redis&logoColor=white)
@@ -19,16 +25,17 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 
 ## Tech Stack
 
-- **Language**: Go 1.25+
+- **Language**: Go 1.24.0
 - **Framework**: Gin (HTTP routing)
-- **AI**: Google Gemini API (gemini-1.5-flash)
-- **Database**: MySQL
+- **AI**: Google Generative AI (Gemini API)
+- **Database**: MySQL with GORM ORM
 - **Cache**: Redis
 - **Language Detection**: lingua-go
 - **Architecture**: Clean Architecture with layered structure
 - **Logging**: Uber's zap (structured logging)
 - **Testing**: testify + stretchr for assertions
 - **Containerization**: Docker & Docker Compose
+- **CI/CD**: Jenkins with automated releases to GitHub
 
 ## Architecture
 
@@ -92,10 +99,11 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.24.0 (or compatible version)
 - Docker & Docker Compose (or standalone MySQL + Redis)
 - Slack workspace admin access
 - Google Gemini API key (free tier available at [Google AI Studio](https://makersuite.google.com/app/apikey))
+- (Optional) Jenkins for CI/CD and automated releases
 
 ### Setup
 
@@ -124,11 +132,7 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 
 4. **Configure Environment**
 
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` with your credentials:
+   Create a `.env` file in the project root with your credentials:
 
    ```bash
    SLACK_BOT_TOKEN=xoxb-...
@@ -137,6 +141,9 @@ A Slack bot that automatically translates English messages to Vietnamese using G
    GEMINI_API_KEY=AIza...
    DATABASE_HOST=localhost
    DATABASE_PORT=3306
+   DATABASE_USER=root
+   DATABASE_PASSWORD=...
+   DATABASE_NAME=slack_bot
    REDIS_HOST=localhost
    REDIS_PORT=6379
    ```
@@ -168,9 +175,34 @@ Postman Collection - see [go-genai-slack-assistant_postman.json](./docs/go-genai
 - `GET /health` - Health check endpoint (returns database and Redis status)
 - `GET /metrics` - Metrics endpoint (translation stats, cache hit rate, etc.)
 
+## CI/CD & Deployment
+
+The project includes automated CI/CD pipeline using Jenkins:
+
+**Automated Pipeline Stages:**
+
+1. **Code Quality**: Linting, testing, and code coverage
+2. **Security Scanning**: Gosec, Govulncheck, and container vulnerability scanning (Trivy)
+3. **Build**: Compile Go binary and create Docker image
+4. **Registry**: Push Docker image to Docker Hub
+5. **Deployment**: 
+   - Deploy to staging environment on Render
+   - Deploy to production on Render
+   - Health checks and validation
+6. **Release**: Automatic GitHub releases with version tags
+
+**Release Information:**
+
+- Releases are automatically created on pushes to `main` branch
+- Release version format: `v1.0.{BUILD_NUMBER}` (e.g., `v1.0.42`)
+- Each release includes comprehensive notes with deployment URLs and health check information
+- Docker images are available at [Docker Hub - minhtrang2106/slack-bot](https://hub.docker.com/r/minhtrang2106/slack-bot)
+
+For detailed CI/CD setup, see [docs/QUALITY_GATE_SETUP.md](./docs/QUALITY_GATE_SETUP.md)
+
 ## License
 
-MIT - see [LICENSE](./LICENSE)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
