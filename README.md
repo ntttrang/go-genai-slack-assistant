@@ -13,7 +13,7 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 ![MySQL](https://img.shields.io/badge/MySQL-Database-4479A1?style=flat&logo=mysql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Cache-DC382D?style=flat&logo=redis&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=flat&logo=docker&logoColor=white)
-![Gemini](https://img.shields.io/badge/Google-Gemini_AI-4285F4?style=flat&logo=google&logoColor=white)
+[![Gemini](https://img.shields.io/badge/Google-Gemini_AI-4285F4?style=flat&logo=google&logoColor=white)](https://makersuite.google.com/app/apikey)
 
 [![Demo Video](https://blog.n8n.io/content/images/size/w1200/2024/05/post-slack-bot3--1-.png)](https://www.youtube.com/@trang-nguyen-thi-thuy)
 
@@ -165,6 +165,92 @@ A Slack bot that automatically translates English messages to Vietnamese using G
    - `make test` - Run tests
    - `make build` - Build the application
 
+## Git Pre-Commit Hooks
+
+This project includes automated pre-commit hooks to ensure code quality before commits. The hooks perform comprehensive validation checks to catch issues early.
+
+### Installation
+
+Install the git hooks by running:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+This will install two hooks:
+- **pre-commit**: Runs code quality and security checks on staged files
+- **commit-msg**: Validates commit message format
+
+### What Gets Checked
+
+**Pre-Commit Hook (runs before each commit):**
+
+1. ✅ **Debugging Statements** - Warns about `fmt.Println` and `println()` usage
+2. ✅ **TODO/FIXME Comments** - Warns about unlinked TODO/FIXME comments
+3. ✅ **Sensitive Data** - Blocks commits containing passwords, API keys, tokens, secrets
+4. ✅ **Code Formatting** - Enforces `go fmt` standard
+5. ✅ **Import Organization** - Checks `goimports` formatting (if installed)
+6. ✅ **Static Analysis** - Runs `go vet` for potential issues
+7. ✅ **Linting** - Runs `golangci-lint` for comprehensive checks (if installed)
+8. ✅ **Module Tidiness** - Ensures `go.mod` and `go.sum` are tidy
+9. ⚠️ **Unit Tests** - Optional (disabled by default for speed)
+
+**Commit-Msg Hook (validates commit message format):**
+
+Enforces [Conventional Commits](https://www.conventionalcommits.org/) format:
+
+```
+type(scope): message
+
+Examples:
+  feat(auth): add login functionality
+  fix(api): handle nil pointer error
+  docs(readme): update installation steps
+```
+
+**Allowed types:**
+- `feat` - New feature
+- `fix` - Bug fix
+- `docs` - Documentation changes
+- `style` - Code style changes (formatting, etc)
+- `refactor` - Code refactoring
+- `test` - Adding or updating tests
+- `chore` - Maintenance tasks
+- `perf` - Performance improvements
+- `ci` - CI/CD changes
+- `build` - Build system changes
+- `revert` - Revert previous commit
+
+### Optional Tools
+
+For full functionality, install these optional tools:
+
+```bash
+# Import organization
+go install golang.org/x/tools/cmd/goimports@latest
+
+# Comprehensive linting
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+```
+
+### Customization
+
+The hooks are located in:
+- `scripts/hooks/pre-commit` - Pre-commit validation script
+- `scripts/hooks/commit-msg` - Commit message validation script
+
+To enable unit tests on every commit, edit `scripts/hooks/pre-commit` and uncomment lines 147-152.
+
+### Bypassing Hooks (Not Recommended)
+
+If you absolutely need to bypass the hooks (emergency situations only):
+
+```bash
+git commit --no-verify -m "your message"
+```
+
+**Note:** This skips all validation checks and should only be used in exceptional cases.
+
 ## API Documentation
 
 Postman Collection - see [go-genai-slack-assistant_postman.json](./docs/go-genai-slack-assistant_postman.json)
@@ -190,6 +276,8 @@ The project includes automated CI/CD pipeline using Jenkins:
    - Deploy to production on Render
    - Health checks and validation
 6. **Release**: Automatic GitHub releases with version tags
+
+see the [JENKINS PIPELINE](./docs/jenkins.jpg)
 
 **Release Information:**
 
