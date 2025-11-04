@@ -1,0 +1,197 @@
+#!/bin/bash
+
+# Git pre-commit hook for Go projects
+# This script runs various checks before allowing a commit
+
+set -e  # Exit on first error
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Project root
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd "$PROJECT_ROOT"
+
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Running pre-commit checks...${NC}"
+echo -e "${GREEN}========================================${NC}"
+
+# Get list of staged Go files
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+
+if [ -z "$STAGED_GO_FILES" ]; then
+    echo -e "${YELLOW}No Go files staged, skipping Go checks${NC}"
+    exit 0
+fi
+
+echo -e "\n${GREEN}Staged Go files:${NC}"
+echo "$STAGED_GO_FILES"
+
+# ==========================================
+# 1. Check for debugging statements
+# ==========================================
+echo -e "\n${GREEN}[1/9] Checking for debugging statements...${NC}"
+FORBIDDEN_PATTERNS=("fmt.Println" "println(")
+FOUND_DEBUG=false
+for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+    if echo "$STAGED_GO_FILES" | xargs grep -n "$pattern" 2>/dev/null; then
+        echo -e "${YELLOW}WARNING: Found debugging statements ($pattern)${NC}"
+        echo -e "${YELLOW}Consider removing them or using proper logging${NC}"
+        FOUND_DEBUG=true
+    fi
+done
+if [ "$FOUND_DEBUG" = false ]; then
+    echo -e "${GREEN}✓ No debugging statements found${NC}"
+fi
+
+# ==========================================
+# 2. Check for TODO/FIXME without issue reference
+# ==========================================
+echo -e "\n${GREEN}[2/9] Checking TODO/FIXME comments...${NC}"
+TODO_WITHOUT_ISSUE=$(echo "$STAGED_GO_FILES" | xargs grep -n "TODO\|FIXME" 2>/dev/null | grep -v "#[0-9]" || true)
+if [ -n "$TODO_WITHOUT_ISSUE" ]; then
+    echo -e "${YELLOW}WARNING: Found TODO/FIXME without issue reference:${NC}"
+    echo "$TODO_WITHOUT_ISSUE"
+    echo -e "${YELLOW}Consider linking to an issue (e.g., TODO(#123): ...)${NC}"
+else
+    echo -e "${GREEN}✓ No unlinked TODO/FIXME found${NC}"
+fi
+
+# ==========================================
+# 3. Check for sensitive data
+# ==========================================
+echo -e "\n${GREEN}[3/9] Checking for sensitive data...${NC}"
+SENSITIVE_PATTERNS=(
+    "password\s*=\s*['\"].*['\"]"
+    "api[_-]?key\s*=\s*['\"].*['\"]"
+    "secret\s*=\s*['\"].*['\"]"
+    "token\s*=\s*['\"].*['\"]"
+    "aws_access_key"
+    "private[_-]?key"
+)
+
+FOUND_SENSITIVE=false
+for pattern in "${SENSITIVE_PATTERNS[@]}"; do
+    MATCHES=$(echo "$STAGED_GO_FILES" | xargs grep -iE "$pattern" 2>/dev/null || true)
+    if [ -n "$MATCHES" ]; then
+        echo -e "${RED}ERROR: Possible sensitive data found!${NC}"
+        echo -e "${YELLOW}Pattern: $pattern${NC}"
+        echo "$MATCHES"
+        FOUND_SENSITIVE=true
+    fi
+done
+
+if [ "$FOUND_SENSITIVE" = true ]; then
+    echo -e "${RED}Please remove sensitive data before committing${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ No sensitive data detected${NC}"
+
+# ==========================================
+# 4. Run go fmt
+# ==========================================
+echo -e "\n${GREEN}[4/9] Running go fmt...${NC}"
+UNFORMATTED_FILES=$(echo "$STAGED_GO_FILES" | xargs gofmt -l 2>/dev/null || true)
+if [ -n "$UNFORMATTED_FILES" ]; then
+    echo -e "${RED}ERROR: The following files are not formatted:${NC}"
+    echo "$UNFORMATTED_FILES"
+    echo -e "${YELLOW}Run: go fmt ./...${NC}"
+    echo -e "${YELLOW}Or run: gofmt -w ${UNFORMATTED_FILES}${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ All files are properly formatted${NC}"
+
+# ==========================================
+# 5. Run goimports (if available)
+# ==========================================
+echo -e "\n${GREEN}[5/9] Checking imports...${NC}"
+if command -v goimports &> /dev/null; then
+    UNIMPORTED_FILES=$(echo "$STAGED_GO_FILES" | xargs goimports -l 2>/dev/null || true)
+    if [ -n "$UNIMPORTED_FILES" ]; then
+        echo -e "${RED}ERROR: The following files have import issues:${NC}"
+        echo "$UNIMPORTED_FILES"
+        echo -e "${YELLOW}Run: goimports -w .${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ Imports are properly organized${NC}"
+else
+    echo -e "${YELLOW}⚠ goimports not found, skipping...${NC}"
+    echo -e "${YELLOW}Install: go install golang.org/x/tools/cmd/goimports@latest${NC}"
+fi
+
+# ==========================================
+# 6. Run go vet
+# ==========================================
+echo -e "\n${GREEN}[6/9] Running go vet...${NC}"
+# Run go vet on the packages that contain the staged files
+PACKAGES=$(echo "$STAGED_GO_FILES" | xargs -I {} dirname {} | sort -u | xargs -I {} echo "./{}" || true)
+if [ -n "$PACKAGES" ]; then
+    if go vet $PACKAGES 2>&1; then
+        echo -e "${GREEN}✓ go vet passed${NC}"
+    else
+        echo -e "${RED}ERROR: go vet found issues${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}⚠ No packages to vet${NC}"
+fi
+
+# ==========================================
+# 7. Run golangci-lint (if available)
+# ==========================================
+echo -e "\n${GREEN}[7/9] Running golangci-lint...${NC}"
+if command -v golangci-lint &> /dev/null; then
+    # Get unique package paths from staged files
+    LINT_PACKAGES=$(echo "$STAGED_GO_FILES" | xargs -I {} dirname {} | sort -u | xargs -I {} echo "./{}/..." || true)
+    if [ -n "$LINT_PACKAGES" ]; then
+        if golangci-lint run --timeout=5m $LINT_PACKAGES 2>&1; then
+            echo -e "${GREEN}✓ golangci-lint passed${NC}"
+        else
+            echo -e "${RED}ERROR: golangci-lint found issues${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${YELLOW}⚠ No packages to lint${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ golangci-lint not found, skipping...${NC}"
+    echo -e "${YELLOW}Install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest${NC}"
+fi
+
+# ==========================================
+# 8. Run tests (optional - disabled by default for speed)
+# ==========================================
+echo -e "\n${GREEN}[8/9] Unit tests check...${NC}"
+# Uncomment the lines below to enable test running on every commit
+# Note: This can significantly slow down commits
+# if go test -short -race ./... 2>&1; then
+#     echo -e "${GREEN}✓ All tests passed${NC}"
+# else
+#     echo -e "${RED}ERROR: Tests failed${NC}"
+#     exit 1
+# fi
+echo -e "${YELLOW}⚠ Unit tests skipped (enable by uncommenting lines in pre-commit hook)${NC}"
+
+# ==========================================
+# 9. Ensure go.mod and go.sum are tidy
+# ==========================================
+echo -e "\n${GREEN}[9/9] Running go mod tidy...${NC}"
+go mod tidy
+if ! git diff --exit-code go.mod go.sum > /dev/null 2>&1; then
+    echo -e "${YELLOW}go.mod or go.sum was modified${NC}"
+    echo -e "${YELLOW}Changes have been staged automatically${NC}"
+    git add go.mod go.sum
+fi
+echo -e "${GREEN}✓ go.mod and go.sum are tidy${NC}"
+
+# ==========================================
+# Success!
+# ==========================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}✓ All pre-commit checks passed!${NC}"
+echo -e "${GREEN}========================================${NC}"
+
+exit 0
