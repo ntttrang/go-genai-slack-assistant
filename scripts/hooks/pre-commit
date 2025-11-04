@@ -162,9 +162,47 @@ else
 fi
 
 # ==========================================
-# 8. Run tests (optional - disabled by default for speed)
+# 8. Run gosec security scanner (if available)
 # ==========================================
-echo -e "\n${GREEN}[8/9] Unit tests check...${NC}"
+echo -e "\n${GREEN}[8/11] Running gosec security scanner...${NC}"
+if command -v gosec &> /dev/null; then
+    # Get unique package paths from staged files
+    GOSEC_PACKAGES=$(echo "$STAGED_GO_FILES" | xargs -I {} dirname {} | sort -u | xargs -I {} echo "./{}/..." || true)
+    if [ -n "$GOSEC_PACKAGES" ]; then
+        if gosec -quiet $GOSEC_PACKAGES 2>&1; then
+            echo -e "${GREEN}✓ gosec security scan passed${NC}"
+        else
+            echo -e "${RED}ERROR: gosec found security issues${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${YELLOW}⚠ No packages to scan${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ gosec not found, skipping...${NC}"
+    echo -e "${YELLOW}Install: go install github.com/securego/gosec/v2/cmd/gosec@latest${NC}"
+fi
+
+# ==========================================
+# 9. Run go-vulncheck (if available)
+# ==========================================
+echo -e "\n${GREEN}[9/11] Running go vulnerability check...${NC}"
+if command -v govulncheck &> /dev/null; then
+    if govulncheck ./... 2>&1; then
+        echo -e "${GREEN}✓ No known vulnerabilities found${NC}"
+    else
+        echo -e "${RED}ERROR: govulncheck found vulnerabilities${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}⚠ govulncheck not found, skipping...${NC}"
+    echo -e "${YELLOW}Install: go install golang.org/x/vuln/cmd/govulncheck@latest${NC}"
+fi
+
+# ==========================================
+# 10. Run tests (optional - disabled by default for speed)
+# ==========================================
+echo -e "\n${GREEN}[10/11] Unit tests check...${NC}"
 # Uncomment the lines below to enable test running on every commit
 # Note: This can significantly slow down commits
 # if go test -short -race ./... 2>&1; then
@@ -176,9 +214,9 @@ echo -e "\n${GREEN}[8/9] Unit tests check...${NC}"
 echo -e "${YELLOW}⚠ Unit tests skipped (enable by uncommenting lines in pre-commit hook)${NC}"
 
 # ==========================================
-# 9. Ensure go.mod and go.sum are tidy
+# 11. Ensure go.mod and go.sum are tidy
 # ==========================================
-echo -e "\n${GREEN}[9/9] Running go mod tidy...${NC}"
+echo -e "\n${GREEN}[11/11] Running go mod tidy...${NC}"
 go mod tidy
 if ! git diff --exit-code go.mod go.sum > /dev/null 2>&1; then
     echo -e "${YELLOW}go.mod or go.sum was modified${NC}"
