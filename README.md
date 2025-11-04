@@ -263,19 +263,25 @@ Postman Collection - see [go-genai-slack-assistant_postman.json](./docs/go-genai
 
 ## CI/CD & Deployment
 
-The project includes automated CI/CD pipeline using Jenkins:
+The project includes automated CI/CD pipeline using Jenkins with separated CI and CD stages:
 
-**Automated Pipeline Stages:**
-
+**CI Pipeline (Runs on every Pull Request):**
 1. **Code Quality**: Linting, testing, and code coverage
 2. **Security Scanning**: Gosec, Govulncheck, and container vulnerability scanning (Trivy)
-3. **Build**: Compile Go binary and create Docker image
-4. **Registry**: Push Docker image to Docker Hub
+3. **Build**: Compile Go binary to verify buildability
+
+**CD Pipeline (Runs after PR merge to develop/main):**
+4. **Registry**: Build Docker image and push to Docker Hub
 5. **Deployment**: 
-   - Deploy to staging environment on Render
-   - Deploy to production on Render
+   - Deploy to staging environment on Render (develop branch)
+   - Deploy to production on Render (main branch)
    - Health checks and validation
 6. **Release**: Automatic GitHub releases with version tags
+
+**Key Features:**
+- Pull requests must pass all CI stages before merge is allowed
+- CD stages only execute after successful merge to protected branches
+- GitHub branch protection rules enforce quality gates
 
 see the [JENKINS PIPELINE](./docs/jenkins.jpg)
 
