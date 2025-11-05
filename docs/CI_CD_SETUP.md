@@ -1,12 +1,30 @@
 # CI/CD Setup Guide: Separate CI and CD Pipelines with Multi-Level Approval
 
 This guide explains how to configure Jenkins and GitHub to implement separated CI/CD pipelines with a robust approval workflow where:
-- **CI stages** run automatically on every Pull Request
-- **CD stages** run only after PR is merged to `develop` or `main` branches
+- **CI pipeline (Jenkinsfile.ci)** runs automatically on every Pull Request
+- **CD pipeline (Jenkinsfile.cd)** runs only after PR is merged to `develop` or `main` branches
 - GitHub blocks PR merges until all CI checks pass
 - **Multi-level approval workflow** enforces code review by Reviewer → Approver → Owner before merge
 - Code owners must approve changes to their domains
 - All review conversations must be resolved before merging
+
+## Pipeline Files Structure
+
+The project uses **two separate Jenkins pipeline files**:
+
+- **`Jenkinsfile.ci`** - Contains CI stages (1-9):
+  - Checkout, Environment Setup, Dependencies
+  - Lint, Security Scans (Gosec, Govulncheck, Trivy)
+  - Unit Tests, Quality Analysis (SonarCloud)
+  - Integration Tests, Build
+  
+- **`Jenkinsfile.cd`** - Contains CD stages (10-14):
+  - Build Docker Image (with Trivy scan)
+  - Push to Docker Hub
+  - Deploy to Staging/Production
+  - Health Check
+
+This separation ensures CI and CD run as independent Jenkins jobs with clear responsibilities.
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -113,7 +131,11 @@ Before starting, ensure you have:
 - For local Jenkins, use ngrok or similar tunneling service
 - Check Jenkins logs: `Manage Jenkins → System Log → github-webhook`
 
-## Jenkins Multibranch Pipeline Setup
+## Jenkins Pipeline Setup
+
+Since we have separated CI and CD into two files, you need to create **two separate Jenkins jobs**:
+1. **CI Job** - Uses `Jenkinsfile.ci` (triggers on all PRs and branches)
+2. **CD Job** - Uses `Jenkinsfile.cd` (triggers only on `develop` and `main` branches)
 
 ### Step 1: Add GitHub Credentials to Jenkins
 
@@ -131,14 +153,14 @@ Before starting, ensure you have:
    ```
 5. Click **OK**
 
-### Step 2: Create Multibranch Pipeline Job
+### Step 2: Create CI Multibranch Pipeline Job
 
 1. From Jenkins dashboard, click **New Item**
-2. Enter name: `go-genai-slack-assistant`
+2. Enter name: `go-genai-slack-assistant-ci`
 3. Select **Multibranch Pipeline**
 4. Click **OK**
 
-### Step 3: Configure Branch Sources
+### Step 3: Configure CI Branch Sources
 
 1. Under **Branch Sources**, click **Add source** → **GitHub**
 
@@ -161,15 +183,15 @@ Before starting, ensure you have:
    - Regular expression: `(main|develop|feature/.*|bugfix/.*)`
    - This limits which branches trigger builds
 
-### Step 4: Configure Build Configuration
+### Step 4: Configure CI Build Configuration
 
 1. Under **Build Configuration**:
    ```
    Mode: by Jenkinsfile
-   Script Path: Jenkinsfile
+   Script Path: Jenkinsfile.ci
    ```
 
-### Step 5: Configure Scan Triggers
+### Step 5: Configure CI Scan Triggers
 
 1. Under **Scan Multibranch Pipeline Triggers**:
    - ✅ Check "Periodically if not otherwise run"
@@ -181,7 +203,7 @@ Before starting, ensure you have:
    Max # of old items to keep: 20
    ```
 
-### Step 6: Save Configuration
+### Step 6: Save CI Job Configuration
 
 1. Click **Save**
 2. Jenkins will immediately scan repository
@@ -189,7 +211,61 @@ Before starting, ensure you have:
    - Discover all branches matching filters
    - Discover all open pull requests
    - Create sub-jobs for each branch/PR
-   - Trigger initial builds
+   - Trigger initial CI builds
+
+### Step 7: Create CD Multibranch Pipeline Job
+
+Now create a separate job for CD (deployment):
+
+1. From Jenkins dashboard, click **New Item**
+2. Enter name: `go-genai-slack-assistant-cd`
+3. Select **Multibranch Pipeline**
+4. Click **OK**
+
+### Step 8: Configure CD Branch Sources
+
+1. Under **Branch Sources**, click **Add source** → **GitHub**
+
+2. Configure GitHub source (same as CI):
+   ```
+   Credentials: github-credentials (select from dropdown)
+   Repository HTTPS URL: https://github.com/ntttrang/go-genai-slack-assistant.git
+   ```
+
+3. Under **Behaviors**, click **Add** and configure:
+
+   **a) Discover branches**
+   - Strategy: `Only branches that are also filed as PRs` → Change to `All branches`
+   
+   **b) Filter by name (with regular expression)**
+   - Regular expression: `(main|develop)`
+   - **Important:** CD should only run on merged branches, NOT on PRs
+
+### Step 9: Configure CD Build Configuration
+
+1. Under **Build Configuration**:
+   ```
+   Mode: by Jenkinsfile
+   Script Path: Jenkinsfile.cd
+   ```
+
+### Step 10: Configure CD Scan Triggers
+
+1. Under **Scan Multibranch Pipeline Triggers**:
+   - ✅ Check "Periodically if not otherwise run"
+   - Interval: `1 minute`
+
+2. Under **Orphaned Item Strategy**:
+   ```
+   Days to keep old items: 7
+   Max # of old items to keep: 20
+   ```
+
+### Step 11: Save CD Job Configuration
+
+1. Click **Save**
+2. Jenkins will scan repository and discover `develop` and `main` branches only
+3. CD pipeline will trigger after merges to these branches
 
 ## GitHub Branch Protection Rules
 
@@ -254,9 +330,9 @@ Before configuring branch protection, create a CODEOWNERS file to define who mus
    - ✅ **Require status checks to pass before merging**
      - ✅ Require branches to be up to date before merging
      - **Status checks that are required:**
-       - Search and select: `continuous-integration/jenkins/pr-merge`
-       - Alternative: `continuous-integration/jenkins/branch`
-       - Or: `go-genai-slack-assistant` (your Jenkins job name)
+       - Search and select: `go-genai-slack-assistant-ci` (your CI Jenkins job name)
+       - Alternative format: `continuous-integration/jenkins/pr-merge`
+       - **Do NOT require CD job status** - CD only runs after merge
        
        > **Note:** Status checks only appear after first build. Create a test PR first, then come back to add the check.
 
@@ -381,24 +457,28 @@ After completing Steps 1-3, your repository will have:
 
 **Result:** A robust, secure approval workflow that ensures code quality, security, and team collaboration before any code reaches your branches.
 
-### Understanding Status Checks
+### Understanding Status Checks with Separate Jobs
 
-Jenkins reports build status to GitHub using these formats:
+With separate CI and CD jobs, Jenkins reports status differently:
 
-**For Pull Requests:**
-- Status check name: `continuous-integration/jenkins/pr-merge`
-- Shows CI stages (1-9) results
+**For Pull Requests (CI Job):**
+- Status check name: `continuous-integration/jenkins/pr-merge` OR `go-genai-slack-assistant-ci`
+- Shows CI stages (1-9) results from **Jenkinsfile.ci**
 - Must pass before merge is allowed
+- **CD job does NOT run on PRs**
 
-**For Branch Builds:**
-- Status check name: `continuous-integration/jenkins/branch`
-- Shows full CI/CD pipeline results
+**For Branch Builds (CD Job):**
+- Status check name: `continuous-integration/jenkins/branch` OR `go-genai-slack-assistant-cd`
+- Shows CD stages (10-14) results from **Jenkinsfile.cd**
+- Runs after PR merge on `develop` or `main` branches
 
 **Status Types:**
 - ✅ Success - All checks passed, merge allowed
 - ❌ Failure - Checks failed, merge blocked
 - 🟡 Pending - Build in progress
 - ⚪ Expected - Waiting for status
+
+**Important:** When configuring branch protection rules, use the **CI job status check** (not CD) as the required check for PRs.
 
 ## Testing the Setup
 
@@ -425,9 +505,9 @@ Follow these steps to verify the CI/CD separation works correctly:
    Then create PR on GitHub targeting `develop`
 
 4. **Expected behavior:**
-   - Jenkins automatically detects new PR
+   - Jenkins **CI job** (`go-genai-slack-assistant-ci`) automatically detects new PR
    - Triggers build within 1 minute
-   - Runs CI stages 1-9:
+   - Runs CI stages 1-9 from **Jenkinsfile.ci**:
      - ✅ Checkout
      - ✅ Environment Setup
      - ✅ Dependencies
@@ -437,14 +517,8 @@ Follow these steps to verify the CI/CD separation works correctly:
      - ✅ Quality Analysis
      - ✅ Integration Tests
      - ✅ Build
-   - **CD stages 10-14 are SKIPPED** with message:
-     ```
-     Stage 'Build Docker Image' skipped due to when conditional
-     Stage 'Push to Docker Hub' skipped due to when conditional
-     Stage 'Deploy to Staging' skipped due to when conditional
-     ...
-     ```
-   - GitHub shows status check on PR
+   - **CD job** (`go-genai-slack-assistant-cd`) **does NOT trigger** on PRs
+   - GitHub shows CI status check on PR
    - Merge button is:
      - ✅ **Enabled** if CI passes
      - ❌ **Blocked** if CI fails
@@ -470,15 +544,15 @@ Follow these steps to verify the CI/CD separation works correctly:
 1. After CI passes, merge the Pull Request on GitHub
 
 2. **Expected behavior:**
-   - Jenkins detects merge to `develop`
+   - Jenkins **CD job** (`go-genai-slack-assistant-cd`) detects merge to `develop`
    - Triggers new build for `develop` branch
-   - Runs **ALL stages 1-14**:
-     - CI stages 1-9 (same as PR)
-     - **CD stages 10-14 now execute:**
-       - ✅ Build Docker Image
-       - ✅ Push to Docker Hub
-       - ✅ Deploy to Staging
-       - ✅ Health Check
+   - Runs **CD stages (10-14)** from **Jenkinsfile.cd**:
+     - ✅ Checkout
+     - ✅ Build Docker Image (with Trivy scan)
+     - ✅ Push to Docker Hub
+     - ✅ Deploy to Staging
+     - ✅ Health Check
+   - **Note:** CI job may also run on the branch, but CD is what matters for deployment
 
 3. Check Jenkins console output for:
    ```
@@ -545,8 +619,9 @@ This test verifies the complete approval chain: CI → Reviewer → Approver →
 2. Create Pull Request to `develop`
 
 3. **Expected behavior - Stage 1: CI Check**
-   - Jenkins automatically triggers CI stages 1-9
-   - GitHub shows "Checks running" status
+   - Jenkins **CI job** automatically triggers CI stages 1-9
+   - GitHub shows "Checks running" status for `go-genai-slack-assistant-ci`
+   - **CD job does NOT run** (not triggered on PRs)
    - Merge button shows:
      ```
      Merging is blocked
@@ -674,24 +749,21 @@ This test verifies the complete approval chain: CI → Reviewer → Approver →
 4. Ensure "Do not allow bypassing" is enabled
 5. Check if you're a repository admin (admins can bypass by default)
 
-### Issue: CD stages run on Pull Requests
+### Issue: CD job runs on Pull Requests
 
 **Symptoms:**
+- CD job triggers on PRs
 - Docker images built on PR
 - Deployment attempted from PR
 
 **Solutions:**
-1. Verify `when` conditions in Jenkinsfile:
-   ```groovy
-   when {
-       allOf {
-           not { changeRequest() }
-           branch 'develop'
-       }
-   }
-   ```
-2. Check Jenkins console shows "Stage skipped due to when conditional"
-3. Ensure using Multibranch Pipeline (not freestyle job)
+1. Verify CD job is configured to filter branches correctly:
+   - Go to CD job configuration
+   - Under "Behaviors" → "Filter by name (with regular expression)"
+   - Ensure regex is: `(main|develop)` (NOT including feature branches or PRs)
+2. Check "Discover pull requests from origin" is **disabled** in CD job
+3. Verify you're using separate jobs (CI and CD) with different Jenkinsfile paths
+4. CD job should NOT discover PRs, only branches
 
 ### Issue: Webhook returns 403 Forbidden
 
@@ -816,7 +888,9 @@ This test verifies the complete approval chain: CI → Reviewer → Approver →
 
 ## Related Documentation
 
-- [Jenkinsfile](../Jenkinsfile) - Pipeline definition
+- [Jenkinsfile.ci](../Jenkinsfile.ci) - CI pipeline definition (stages 1-9)
+- [Jenkinsfile.cd](../Jenkinsfile.cd) - CD pipeline definition (stages 10-14)
+- [Jenkinsfile](../Jenkinsfile) - Legacy combined pipeline (deprecated, kept for reference)
 - [SLACK_SETUP.md](./SLACK_SETUP.md) - Slack integration
 - [README.md](../README.md) - Project overview
 - [Jenkins Official Docs](https://www.jenkins.io/doc/book/pipeline/multibranch/)
@@ -834,7 +908,15 @@ If you encounter issues not covered in this guide:
 
 ---
 
-**Last Updated:** 2025-11-04  
-**Version:** 2.0 (Added Multi-Level Approval Workflow)  
+**Last Updated:** 2025-11-05  
+**Version:** 3.0 (Separated CI and CD into independent pipeline files)  
 **Maintainer:** DevOps Team
+
+## Summary of Changes in Version 3.0
+
+- **Separated pipeline files:** Created `Jenkinsfile.ci` and `Jenkinsfile.cd` as independent files
+- **Two Jenkins jobs:** CI job runs on all PRs and branches, CD job runs only on `develop` and `main`
+- **Clearer separation of concerns:** CI focuses on code quality and testing, CD focuses on deployment
+- **Easier maintenance:** Each pipeline can be modified independently without affecting the other
+- **Original Jenkinsfile:** Kept as `Jenkinsfile` for backward compatibility (can be removed after migration)
 
