@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    triggers {
-        githubPush()
-    }
-
     environment {
         GO_VERSION = '1.24.1'
         GOPATH = "${env.WORKSPACE}/.go"
@@ -44,21 +40,22 @@ pipeline {
                 echo '============================================'
                 echo 'CI STAGE 1: CHECKOUT SOURCE CODE'
                 echo '============================================'
-                echo 'Checking out repository...'
-                git(
-                    url: 'https://github.com/ntttrang/go-genai-slack-assistant.git',
-                    branch: 'develop',
-                    credentialsId: 'github-credentials'
-                )
                 script {
-                    def gitBranch = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
+                    if (env.CHANGE_ID) {
+                        echo "Building Pull Request #${env.CHANGE_ID}"
+                        echo "PR Title: ${env.CHANGE_TITLE}"
+                        echo "PR Author: ${env.CHANGE_AUTHOR}"
+                        echo "Target Branch: ${env.CHANGE_TARGET}"
+                    } else {
+                        echo "Building Branch: ${env.BRANCH_NAME}"
+                    }
+                }
+                echo 'Checking out repository...'
+                checkout scm
+                script {
                     def gitCommit = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-                    echo "Branch: ${gitBranch}"
                     echo "Commit: ${gitCommit}"
-                    
-                    // Set BRANCH_NAME for when conditions to work
-                    env.BRANCH_NAME = gitBranch
-                    echo "BRANCH_NAME set to: ${env.BRANCH_NAME}"
+                    echo "Workspace: ${env.WORKSPACE}"
                 }
             }
         }
@@ -229,6 +226,15 @@ pipeline {
         // CD STAGES
         // ===============================
         stage('10. Build Docker Image') {
+            when {
+                allOf {
+                    not { changeRequest() }
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
+                }
+            }
             steps {
                 script {
                     echo '============================================'
@@ -270,9 +276,12 @@ pipeline {
 
         stage('11. Push to Docker Hub') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
+                allOf {
+                    not { changeRequest() }
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
                 }
             }
             steps {
@@ -306,7 +315,10 @@ pipeline {
 
         stage('12. Deploy to Staging') {
             when {
-                branch 'develop'
+                allOf {
+                    not { changeRequest() }
+                    branch 'develop'
+                }
             }
             steps {
                 script {
@@ -342,7 +354,10 @@ pipeline {
 
         stage('13. Deploy to Production') {
             when {
-                branch 'main'
+                allOf {
+                    not { changeRequest() }
+                    branch 'main'
+                }
             }
             steps {
                 script {
@@ -384,9 +399,12 @@ pipeline {
 
         stage('14. Health Check') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
+                allOf {
+                    not { changeRequest() }
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
                 }
             }
             steps {
@@ -451,20 +469,40 @@ pipeline {
         }
 
         success {
-            echo 'CI/CD pipeline completed successfully'
             script {
+                def pipelineType = env.CHANGE_ID ? "CI (Pull Request)" : "CI/CD (Branch Build)"
+                echo "${pipelineType} pipeline completed successfully"
+                
                 if (env.DOCKER_IMAGE) {
                     echo "Docker image built and pushed: ${env.DOCKER_IMAGE}"
                 }
+                
                 def deployEnv = env.DEPLOY_ENVIRONMENT ?: 'N/A'
-                def message = """
-                    ✅ *BUILD SUCCESS*
-                    Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
-                    Branch: ${env.BRANCH_NAME}
-                    Environment: ${deployEnv}
-                    Duration: ${currentBuild.durationString}
-                    Build URL: ${env.BUILD_URL}
-                """.stripIndent()
+                def message = ""
+                
+                if (env.CHANGE_ID) {
+                    // Pull Request build
+                    message = """
+                        ✅ *CI SUCCESS - Pull Request*
+                        PR #${env.CHANGE_ID}: ${env.CHANGE_TITLE}
+                        Author: ${env.CHANGE_AUTHOR}
+                        Target: ${env.CHANGE_TARGET}
+                        Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+                        Duration: ${currentBuild.durationString}
+                        Build URL: ${env.BUILD_URL}
+                        PR URL: ${env.CHANGE_URL}
+                    """.stripIndent()
+                } else {
+                    // Branch build with deployment
+                    message = """
+                        ✅ *CI/CD SUCCESS*
+                        Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+                        Branch: ${env.BRANCH_NAME}
+                        Environment: ${deployEnv}
+                        Duration: ${currentBuild.durationString}
+                        Build URL: ${env.BUILD_URL}
+                    """.stripIndent()
+                }
                 
                 // Send Slack notifications via Slack Plugin
                 slackSend(
@@ -478,20 +516,40 @@ pipeline {
         }
 
         failure {
-            echo 'CI/CD pipeline failed'
             script {
+                def pipelineType = env.CHANGE_ID ? "CI (Pull Request)" : "CI/CD (Branch Build)"
+                echo "${pipelineType} pipeline failed"
+                
                 if (env.DOCKER_IMAGE) {
                     echo "Docker image that failed: ${env.DOCKER_IMAGE}"
                 }
+                
                 def deployEnv = env.DEPLOY_ENVIRONMENT ?: 'N/A'
-                def message = """
-                    ❌ *BUILD FAILED*
-                    Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
-                    Branch: ${env.BRANCH_NAME}
-                    Environment: ${deployEnv}
-                    Duration: ${currentBuild.durationString}
-                    Build URL: ${env.BUILD_URL}
-                """.stripIndent()
+                def message = ""
+                
+                if (env.CHANGE_ID) {
+                    // Pull Request build
+                    message = """
+                        ❌ *CI FAILED - Pull Request*
+                        PR #${env.CHANGE_ID}: ${env.CHANGE_TITLE}
+                        Author: ${env.CHANGE_AUTHOR}
+                        Target: ${env.CHANGE_TARGET}
+                        Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+                        Duration: ${currentBuild.durationString}
+                        Build URL: ${env.BUILD_URL}
+                        PR URL: ${env.CHANGE_URL}
+                    """.stripIndent()
+                } else {
+                    // Branch build with deployment
+                    message = """
+                        ❌ *CI/CD FAILED*
+                        Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+                        Branch: ${env.BRANCH_NAME}
+                        Environment: ${deployEnv}
+                        Duration: ${currentBuild.durationString}
+                        Build URL: ${env.BUILD_URL}
+                    """.stripIndent()
+                }
                 
                 // Send Slack notifications via Slack Plugin
                 slackSend(
@@ -504,12 +562,29 @@ pipeline {
             }
         }
         aborted {
-            echo '🛑 Pipeline was aborted!'
             script {
-                def message = """
-                    🛑 *BUILD ABORTED*
-                    Build URL: ${env.BUILD_URL}
-                """.stripIndent()
+                def pipelineType = env.CHANGE_ID ? "CI (Pull Request)" : "CI/CD (Branch Build)"
+                echo "🛑 ${pipelineType} pipeline was aborted!"
+                
+                def message = ""
+                
+                if (env.CHANGE_ID) {
+                    // Pull Request build
+                    message = """
+                        🛑 *BUILD ABORTED - Pull Request*
+                        PR #${env.CHANGE_ID}: ${env.CHANGE_TITLE}
+                        Build URL: ${env.BUILD_URL}
+                        PR URL: ${env.CHANGE_URL}
+                    """.stripIndent()
+                } else {
+                    // Branch build
+                    message = """
+                        🛑 *BUILD ABORTED*
+                        Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+                        Branch: ${env.BRANCH_NAME}
+                        Build URL: ${env.BUILD_URL}
+                    """.stripIndent()
+                }
                 
                 // Send Slack notifications via Slack Plugin
                 slackSend(

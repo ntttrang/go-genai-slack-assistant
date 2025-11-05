@@ -1,0 +1,42 @@
+# CODEOWNERS file for go-genai-slack-assistant
+# This file defines who is responsible for reviewing code in specific parts of the repository
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+* @ntttrang @tracy-n
+
+# Documentation
+/docs/ @ntttrang
+*.md @ntttrang
+
+# CI/CD Configuration
+/Jenkinsfile @ntttrang
+/.github/ @ntttrang
+/scripts/ @ntttrang
+
+# Infrastructure & Deployment
+/infrastructure/ @ntttrang
+/deploy.txt @ntttrang
+/docker-compose.yml @ntttrang
+/Dockerfile @ntttrang
+
+# Configuration files
+/Makefile @ntttrang
+/sonar-project.properties @ntttrang
+/.env.example @ntttrang
+
+# Go source code
+/cmd/ @ntttrang
+/internal/ @ntttrang
+/pkg/ @ntttrang
+
+# Database
+/database/ @ntttrang
+
+# Tests
+/tests/ @ntttrang
+*_test.go @ntttrang
+
+# Dependencies
+/go.mod @ntttrang
+/go.sum @ntttrang
