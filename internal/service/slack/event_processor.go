@@ -65,18 +65,20 @@ func (ep *eventProcessorImpl) handleEventCallback(ctx context.Context, payload m
 	switch eventType {
 	case "message":
 		ep.handleMessageEvent(ctx, event)
-	case "reaction_added":
-		ep.handleReactionEvent(ctx, event)
 	default:
 		ep.logger.Debug("Ignoring callback event type", zap.String("type", eventType))
 	}
 }
 
 func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[string]interface{}) {
-	// Skip messages with subtype (threaded replies, edits, etc.)
+	// Skip messages with certain subtypes (threaded replies, edits, etc.)
+	// But allow file_share subtype (messages with images/files)
 	if subtype, ok := event["subtype"].(string); ok && subtype != "" {
-		ep.logger.Debug("Skipping message with subtype", zap.String("subtype", subtype))
-		return
+		// Allow file_share subtype to be processed
+		if subtype != "file_share" {
+			ep.logger.Debug("Skipping message with subtype", zap.String("subtype", subtype))
+			return
+		}
 	}
 
 	// Skip bot messages
@@ -91,11 +93,6 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		return
 	}
 
-	text, ok := event["text"].(string)
-	if !ok || text == "" {
-		return
-	}
-
 	userID, ok := event["user"].(string)
 	if !ok {
 		ep.logger.Error("Failed to get user ID")
@@ -105,6 +102,48 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 	ts, tsOk := event["ts"].(string)
 	if !tsOk {
 		ep.logger.Error("Failed to get message timestamp")
+		return
+	}
+
+	text, ok := event["text"].(string)
+	if !ok {
+		text = ""
+	}
+
+	// Trim whitespace to check if there's actual text content
+	trimmedText := strings.TrimSpace(text)
+
+	// Check if message contains files
+	hasFiles := false
+	if filesInterface, ok := event["files"]; ok {
+		if filesArray, ok := filesInterface.([]interface{}); ok && len(filesArray) > 0 {
+			hasFiles = true
+		}
+	}
+
+	// If message has files but no text, just add eyes reaction and return
+	if hasFiles && trimmedText == "" {
+		ep.logger.Info("Message contains files only (no text), adding eyes reaction",
+			zap.String("channel_id", channelID),
+			zap.String("user_id", userID),
+			zap.String("timestamp", ts))
+
+		if err := ep.slackClient.AddReaction("eyes", channelID, ts); err != nil {
+			ep.logger.Warn("Failed to add emoji reaction to message",
+				zap.Error(err),
+				zap.String("channel_id", channelID),
+				zap.String("timestamp", ts),
+				zap.String("emoji", "eyes"),
+				zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
+		}
+		return
+	}
+
+	// If no text at all (and no files), skip
+	if trimmedText == "" {
+		ep.logger.Debug("Skipping message with empty or missing text",
+			zap.String("channel_id", channelID),
+			zap.Any("event", event))
 		return
 	}
 
@@ -136,12 +175,54 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		return
 	}
 
+	// Check if message contains only user mentions or @here/@channel
+	if isUserMentionOnly(text) {
+		ep.logger.Info("Message contains only mentions (@user, @here, @channel), skipping translation",
+			zap.String("text", text))
+		return
+	}
+
+	// Get user info for custom bot name and avatar
+	userInfo, err := ep.slackClient.GetUserInfo(userID)
+	botName := "SlackBot"
+	botAvatar := ""
+	if err == nil && userInfo != nil {
+		displayName := userInfo.Profile.DisplayName
+		if displayName == "" {
+			displayName = userInfo.Name
+		}
+		// botName = fmt.Sprintf("%s (Bot) %s", displayName, emoji)
+		botName = fmt.Sprintf("%s (Bot)", displayName)
+		botAvatar = userInfo.Profile.Image512
+		if botAvatar == "" {
+			botAvatar = userInfo.Profile.Image48
+		}
+		ep.logger.Debug("User info retrieved",
+			zap.String("user_name", userInfo.Name),
+			zap.String("bot_name", botName))
+	} else {
+		ep.logger.Warn("Failed to get user info, using default bot name",
+			zap.Error(err))
+	}
+
 	// Detect message language using original text with emoji codes
 	detectedLang, err := ep.detectLanguage(ctx, text)
 	if err != nil {
 		ep.logger.Error("Failed to detect message language",
 			zap.Error(err),
 			zap.String("text", text))
+
+		// Check if quota exceeded error
+		if strings.Contains(err.Error(), "googleapi: Error 429: Resource exhausted") {
+			errorMessage := "❌ Sorry, I can't translate because the current quota has been exceeded. Please try again later."
+			_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, errorMessage, ts, botName, botAvatar)
+			if err != nil {
+				ep.logger.Error("Failed to post error message",
+					zap.Error(err),
+					zap.String("channel_id", channelID))
+			}
+			return
+		}
 		return
 	}
 
@@ -158,23 +239,8 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
 			zap.String("detected_language", detectedLang))
 
-		// Get user info for custom bot name and avatar
-		userInfo, err := ep.slackClient.GetUserInfo(userID)
-		botName := "SlackBot"
-		botAvatar := ""
-		if err == nil && userInfo != nil {
-			botName = userInfo.Profile.DisplayName + " ( Bot)"
-			if botName == " bot" {
-				botName = userInfo.Name + " ( Bot)"
-			}
-			botAvatar = userInfo.Profile.Image512
-			if botAvatar == "" {
-				botAvatar = userInfo.Profile.Image48
-			}
-		}
-
 		// Post error message to thread
-		errorMsg := "⚠️ Sorry! I only translate English and Vietnamese right now, not other languages or slang."
+		errorMsg := "⚠️ Sorry! I only translate English and Vietnamese right now, not other languages, slang or numbers"
 		_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, ts, botName, botAvatar)
 		if err != nil {
 			ep.logger.Error("Failed to post error message",
@@ -188,25 +254,12 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		Text:           text,
 		SourceLanguage: detectedLang,
 		TargetLanguage: targetLang,
+		UserID:         userID,
+		ChannelID:      channelID,
 	}
 
 	result, err := ep.translationUseCase.Translate(translationReq)
 	if err != nil {
-		// Get user info for error messages
-		userInfo, _ := ep.slackClient.GetUserInfo(userID)
-		botName := "SlackBot"
-		botAvatar := ""
-		if userInfo != nil {
-			botName = userInfo.Profile.DisplayName + " ( Bot)"
-			if botName == " bot" {
-				botName = userInfo.Name + " ( Bot)"
-			}
-			botAvatar = userInfo.Profile.Image512
-			if botAvatar == "" {
-				botAvatar = userInfo.Profile.Image48
-			}
-		}
-
 		if strings.Contains(err.Error(), "Delimiter tag injection") || strings.Contains(err.Error(), "input validation failed") {
 			ep.logger.Warn("Security validation failed for message",
 				zap.Error(err),
@@ -239,43 +292,42 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 
 	translatedText := result.TranslatedText
 
-	ep.logger.Info("Translation completed",
-		zap.String("original", text),
-		zap.String("translated", translatedText),
-		zap.String("source_lang", result.SourceLanguage),
-		zap.String("target_lang", result.TargetLanguage))
+	// Convert user mentions and @here/@channel to quoted format
+	translatedText = strings.ReplaceAll(translatedText, "<!here>", "`here`")
+	translatedText = strings.ReplaceAll(translatedText, "<!channel>", "`channel`")
+	// // Quote user mentions like <@USERID|username>
+	userMentionPattern := regexp.MustCompile(`<@[^>]+>`)
+	translatedText = userMentionPattern.ReplaceAllStringFunc(translatedText, func(match string) string {
+		return "`" + match + "`"
+	})
 
-	translatedText = ep.convertUserMentionsToText(text, translatedText)
+	responseText := translatedText
 
-	// Post translated message as a thread reply with emoji flag
+	// Customize botName
+	//Determine emoji flag based on target language
 	emoji := "🇻🇳"
 	if result.TargetLanguage == "English" {
 		emoji = "🇬🇧"
 	}
-	responseText := fmt.Sprintf("%s %s", emoji, translatedText)
+	botName = fmt.Sprintf("%s %s", botName, emoji)
 
-	// Get user info for custom bot name and avatar
-	userInfo, err := ep.slackClient.GetUserInfo(userID)
-	botName := "SlackBot"
-	botAvatar := ""
-	if err == nil && userInfo != nil {
-		botName = userInfo.Profile.DisplayName + " ( Bot)"
-		if botName == " bot" {
-			botName = userInfo.Name + " ( Bot)"
+	// Extract files from the original message event
+	files := ep.extractFiles(event)
+
+	// Check if message contains @here or @channel tags
+	isQuote := containsAtHereOrChannel(text)
+
+	// Post message with appropriate format (quote or normal)
+	if isQuote {
+		if len(files) > 0 {
+			_, _, err = ep.slackClient.PostMessageWithBotInfoAsQuoteAndFiles(channelID, responseText, ts, botName, botAvatar, files)
+		} else {
+			_, _, err = ep.slackClient.PostMessageWithBotInfoAsQuote(channelID, responseText, ts, botName, botAvatar)
 		}
-		botAvatar = userInfo.Profile.Image512
-		if botAvatar == "" {
-			botAvatar = userInfo.Profile.Image48
-		}
-		ep.logger.Debug("User info retrieved",
-			zap.String("user_name", userInfo.Name),
-			zap.String("bot_name", botName))
 	} else {
-		ep.logger.Warn("Failed to get user info, using default bot name",
-			zap.Error(err))
+		_, _, err = ep.slackClient.PostMessageWithBotInfoAndFiles(channelID, responseText, ts, botName, botAvatar, files)
 	}
 
-	_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, responseText, ts, botName, botAvatar)
 	if err != nil {
 		ep.logger.Error("Failed to post translated message",
 			zap.Error(err),
@@ -286,7 +338,8 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 	ep.logger.Info("Translation posted successfully",
 		zap.String("channel_id", channelID),
 		zap.String("original", text[:min(len(text), 30)]),
-		zap.String("translated", translatedText[:min(len(translatedText), 30)]))
+		zap.String("translated", translatedText[:min(len(translatedText), 30)]),
+		zap.Bool("is_quote", isQuote))
 }
 
 func (ep *eventProcessorImpl) detectLanguage(ctx context.Context, text string) (string, error) {
@@ -298,216 +351,6 @@ func (ep *eventProcessorImpl) detectLanguage(ctx context.Context, text string) (
 	ep.logger.Debug("Language detection result",
 		zap.String("detected_language", language))
 	return language, nil
-}
-
-func (ep *eventProcessorImpl) handleReactionEvent(ctx context.Context, event map[string]interface{}) {
-	reaction, ok := event["reaction"].(string)
-	if !ok {
-		ep.logger.Error("Failed to get reaction")
-		return
-	}
-
-	// Check if reaction is Vietnamese flag emoji
-	if reaction != "flag-vn" && reaction != "vn" {
-		return
-	}
-
-	itemType, ok := event["item"].(map[string]interface{})
-	if !ok {
-		ep.logger.Error("Failed to get item data")
-		return
-	}
-
-	channelID, ok := itemType["channel"].(string)
-	if !ok {
-		ep.logger.Error("Failed to get channel ID from reaction")
-		return
-	}
-
-	messageTS, ok := itemType["ts"].(string)
-	if !ok {
-		ep.logger.Error("Failed to get message timestamp from reaction")
-		return
-	}
-
-	ep.logger.Info("Processing reaction event",
-		zap.String("channel_id", channelID),
-		zap.String("reaction", reaction),
-		zap.String("message_ts", messageTS))
-
-	// Add eye emoji reaction to the message
-	if err := ep.slackClient.AddReaction("eyes", channelID, messageTS); err != nil {
-		ep.logger.Warn("Failed to add emoji reaction to message",
-			zap.Error(err),
-			zap.String("channel_id", channelID),
-			zap.String("timestamp", messageTS),
-			zap.String("emoji", "eyes"),
-			zap.String("troubleshooting", "Check if bot has reactions:write scope in Slack app OAuth settings"))
-	}
-
-	// Fetch the original message
-	message, err := ep.slackClient.GetMessage(channelID, messageTS)
-	if err != nil {
-		ep.logger.Error("Failed to fetch message",
-			zap.Error(err),
-			zap.String("channel_id", channelID),
-			zap.String("message_ts", messageTS))
-		return
-	}
-
-	if message == nil || message.Text == "" {
-		ep.logger.Warn("Message not found or empty",
-			zap.String("channel_id", channelID),
-			zap.String("message_ts", messageTS))
-		return
-	}
-
-	// Check if message contains only emoji codes
-	if isEmojiOnly(message.Text) {
-		ep.logger.Info("Message contains only emoji, skipping translation from reaction",
-			zap.String("text", message.Text))
-		return
-	}
-
-	// Detect language from the message using original text with emoji codes
-	detectedLang, err := ep.detectLanguage(ctx, message.Text)
-	if err != nil {
-		ep.logger.Error("Failed to detect message language",
-			zap.Error(err),
-			zap.String("text", message.Text))
-		return
-	}
-
-	// Determine target language based on detected source language
-	targetLang := "Vietnamese"
-	if detectedLang == "Vietnamese" {
-		targetLang = "English"
-	} else if detectedLang != "English" {
-		ep.logger.Info("Unsupported language, only English and Vietnamese are supported",
-			zap.String("detected_language", detectedLang))
-
-		// Get user info for custom bot name and avatar
-		userInfo, err := ep.slackClient.GetUserInfo(message.User)
-		botName := "SlackBot"
-		botAvatar := ""
-		if err == nil && userInfo != nil {
-			botName = userInfo.Profile.DisplayName + " ( Bot)"
-			if botName == " bot" {
-				botName = userInfo.Name + " ( Bot)"
-			}
-			botAvatar = userInfo.Profile.Image512
-			if botAvatar == "" {
-				botAvatar = userInfo.Profile.Image48
-			}
-		}
-
-		// Post error message to thread
-		errorMsg := "⚠️ Sorry! I only translate English and Vietnamese right now, not other languages or slang."
-		_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, messageTS, botName, botAvatar)
-		if err != nil {
-			ep.logger.Error("Failed to post error message",
-				zap.Error(err),
-				zap.String("channel_id", channelID))
-		}
-		return
-	}
-
-	translationReq := request.Translation{
-		Text:           message.Text,
-		SourceLanguage: detectedLang,
-		TargetLanguage: targetLang,
-	}
-
-	result, err := ep.translationUseCase.Translate(translationReq)
-	if err != nil {
-		// Get user info for error messages
-		userInfo, _ := ep.slackClient.GetUserInfo(message.User)
-		botName := "SlackBot"
-		botAvatar := ""
-		if userInfo != nil {
-			botName = userInfo.Profile.DisplayName + " (Bot) 🇻🇳 ⇄ 🇬🇧"
-			if botName == " bot" {
-				botName = userInfo.Name + " (Bot)"
-			}
-			botAvatar = userInfo.Profile.Image512
-			if botAvatar == "" {
-				botAvatar = userInfo.Profile.Image48
-			}
-		}
-
-		if strings.Contains(err.Error(), "Delimiter tag injection") || strings.Contains(err.Error(), "input validation failed") {
-			ep.logger.Warn("Security validation failed for reaction translation",
-				zap.Error(err),
-				zap.String("channel_id", channelID))
-
-			errorMsg := "⚠️ Sorry, there seems to be an error in your text. Please check the content and try again."
-			_, _, postErr := ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, messageTS, botName, botAvatar)
-			if postErr != nil {
-				ep.logger.Error("Failed to post security error message",
-					zap.Error(postErr),
-					zap.String("channel_id", channelID))
-			}
-			return
-		}
-
-		ep.logger.Error("Failed to translate message from reaction",
-			zap.Error(err),
-			zap.String("text", message.Text))
-
-		errorMsg := "❌ Sorry, I can't translate because the current quota has been exceeded. Please try again later."
-		_, _, postErr := ep.slackClient.PostMessageWithBotInfo(channelID, errorMsg, messageTS, botName, botAvatar)
-		if postErr != nil {
-			ep.logger.Error("Failed to post translation error message",
-				zap.Error(postErr),
-				zap.String("channel_id", channelID))
-		}
-		return
-	}
-
-	translatedText := result.TranslatedText
-
-	translatedText = ep.convertUserMentionsToText(message.Text, translatedText)
-
-	// Post translated message as a thread reply with emoji flag
-	emoji := "🇻🇳"
-	if result.TargetLanguage == "English" {
-		emoji = "🇬🇧"
-	}
-	responseText := fmt.Sprintf("%s\n%s", emoji, translatedText)
-
-	// Get user info for custom bot name and avatar
-	userInfo, err := ep.slackClient.GetUserInfo(message.User)
-	botName := "SlackBot"
-	botAvatar := ""
-	if err == nil && userInfo != nil {
-		botName = userInfo.Profile.DisplayName + " ( Bot)"
-		if botName == " bot" {
-			botName = userInfo.Name + " ( Bot)"
-		}
-		botAvatar = userInfo.Profile.Image512
-		if botAvatar == "" {
-			botAvatar = userInfo.Profile.Image48
-		}
-		ep.logger.Debug("User info retrieved",
-			zap.String("user_name", userInfo.Name),
-			zap.String("bot_name", botName))
-	} else {
-		ep.logger.Warn("Failed to get user info, using default bot name",
-			zap.Error(err))
-	}
-
-	_, _, err = ep.slackClient.PostMessageWithBotInfo(channelID, responseText, messageTS, botName, botAvatar)
-	if err != nil {
-		ep.logger.Error("Failed to post translated message from reaction",
-			zap.Error(err),
-			zap.String("channel_id", channelID))
-		return
-	}
-
-	ep.logger.Info("Translation from reaction posted successfully",
-		zap.String("channel_id", channelID),
-		zap.String("original", message.Text[:min(len(message.Text), 30)]),
-		zap.String("translated", translatedText[:min(len(translatedText), 30)]))
 }
 
 func min(a, b int) int {
@@ -527,6 +370,83 @@ func isEmojiOnly(text string) bool {
 	withoutEmojis := emojiPattern.ReplaceAllString(trimmed, "")
 	// Check if anything is left after removing emojis and whitespace
 	return strings.TrimSpace(withoutEmojis) == ""
+}
+
+func isUserMentionOnly(text string) bool {
+	userMentionPattern := regexp.MustCompile(`<@[^>]+>`)
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	// Remove all user mentions
+	withoutUserMentions := userMentionPattern.ReplaceAllString(trimmed, "")
+	// Remove @here and @channel mentions (both Slack tags and @ format)
+	withoutHereChannel := strings.ReplaceAll(withoutUserMentions, "<!here>", "")
+	withoutHereChannel = strings.ReplaceAll(withoutHereChannel, "<!channel>", "")
+	withoutHereChannel = strings.ReplaceAll(withoutHereChannel, "@here", "")
+	withoutHereChannel = strings.ReplaceAll(withoutHereChannel, "@channel", "")
+	// Check if anything is left after removing all mentions and whitespace
+	return strings.TrimSpace(withoutHereChannel) == ""
+}
+
+// containsAtHereOrChannel checks if message contains @here or @channel tags
+func containsAtHereOrChannel(text string) bool {
+	return strings.Contains(text, "<!here>") || strings.Contains(text, "<!channel>") ||
+		strings.Contains(text, "@here") || strings.Contains(text, "@channel")
+}
+
+// extractMentionPrefix extracts @here or @channel mention from the beginning of text
+// Returns the mention in backtick format (e.g., "`here`" or "`channel`") or empty string if no mention found
+func (ep *eventProcessorImpl) extractMentionPrefix(text string) string {
+	trimmed := strings.TrimSpace(text)
+
+	// Check for <!here> or <!channel> tags
+	if strings.HasPrefix(trimmed, "<!here>") {
+		return "`here`"
+	}
+	if strings.HasPrefix(trimmed, "<!channel>") {
+		return "`channel`"
+	}
+
+	// Check for @here or @channel
+	if strings.HasPrefix(trimmed, "@here") {
+		return "`here`"
+	}
+	if strings.HasPrefix(trimmed, "@channel") {
+		return "`channel`"
+	}
+
+	return ""
+}
+
+// convertUserMentionsToText converts mentions in the original text to backticks in the translated text
+// If original text has @here/@channel at the start, it prepends them to the translated text
+func (ep *eventProcessorImpl) convertUserMentionsToText(originalText, translatedText string) string {
+	// Extract mention prefix from original text
+	mentionPrefix := ep.extractMentionPrefix(originalText)
+
+	// If we found a mention prefix, prepend it to the translated text
+	if mentionPrefix != "" {
+		return mentionPrefix + " " + translatedText
+	}
+
+	// Return translated text as-is
+	return translatedText
+}
+
+// convertHereChannelMentionsToQuotes converts @here/@channel and <!here>/<!channel> mentions to backtick format
+func (ep *eventProcessorImpl) convertHereChannelMentionsToQuotes(text string) string {
+	result := text
+
+	// Convert Slack tags
+	result = strings.ReplaceAll(result, "<!here>", "`here`")
+	result = strings.ReplaceAll(result, "<!channel>", "`channel`")
+
+	// Convert @ mentions
+	result = strings.ReplaceAll(result, "@here", "`here`")
+	result = strings.ReplaceAll(result, "@channel", "`channel`")
+
+	return result
 }
 
 func extractEmojis(text string) (string, map[string]string) {
@@ -550,45 +470,61 @@ func restoreEmojis(text string, emojis map[string]string) string {
 	return result
 }
 
-func (ep *eventProcessorImpl) convertUserMentionsToText(originalText, translatedText string) string {
-	userMentionPattern := regexp.MustCompile(`<@(U[A-Z0-9]+)>`)
+// FileInfo represents file information from Slack
+type FileInfo struct {
+	URL       string
+	Permalink string
+	Mimetype  string
+	Name      string
+}
 
-	userIDs := make([]string, 0)
-	seen := make(map[string]bool)
-	matches := userMentionPattern.FindAllStringSubmatch(originalText, -1)
+// extractFiles extracts file information from a Slack event
+func (ep *eventProcessorImpl) extractFiles(event map[string]interface{}) []FileInfo {
+	files := []FileInfo{}
 
-	for _, match := range matches {
-		if len(match) > 1 {
-			userID := match[1]
-			if !seen[userID] {
-				userIDs = append(userIDs, userID)
-				seen[userID] = true
-			}
+	filesInterface, ok := event["files"]
+	if !ok {
+		return files
+	}
+
+	filesArray, ok := filesInterface.([]interface{})
+	if !ok {
+		return files
+	}
+
+	for _, fileInterface := range filesArray {
+		fileMap, ok := fileInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		fileInfo := FileInfo{}
+
+		// Extract URL and permalink - both are useful
+		if urlPrivate, ok := fileMap["url_private"].(string); ok {
+			fileInfo.URL = urlPrivate
+		}
+
+		if permalink, ok := fileMap["permalink"].(string); ok {
+			fileInfo.Permalink = permalink
+		}
+
+		if mimetype, ok := fileMap["mimetype"].(string); ok {
+			fileInfo.Mimetype = mimetype
+		}
+
+		if name, ok := fileMap["name"].(string); ok {
+			fileInfo.Name = name
+		}
+
+		// Only add if we have at least a URL or permalink
+		if fileInfo.URL != "" || fileInfo.Permalink != "" {
+			files = append(files, fileInfo)
+			ep.logger.Debug("Extracted file from event",
+				zap.String("name", fileInfo.Name),
+				zap.String("mimetype", fileInfo.Mimetype))
 		}
 	}
 
-	if len(userIDs) == 0 {
-		return translatedText
-	}
-
-	usernameMap := make(map[string]string)
-	for _, userID := range userIDs {
-		userInfo, err := ep.slackClient.GetUserInfo(userID)
-		if err == nil && userInfo != nil {
-			username := userInfo.Profile.DisplayName
-			if username == "" {
-				username = userInfo.Name
-			}
-			if username != "" {
-				usernameMap[userID] = "`@" + username + "`"
-			}
-		}
-	}
-
-	result := translatedText
-	for userID, mention := range usernameMap {
-		result = strings.ReplaceAll(result, "<@"+userID+">", mention)
-	}
-
-	return result
+	return files
 }

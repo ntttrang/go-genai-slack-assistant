@@ -96,7 +96,7 @@ func main() {
 	metricsManager := metrics.NewMetrics()
 
 	// Initialize AI provider (Gemini)
-	geminiProvider, err := ai.NewGeminiProvider(cfg.Gemini.APIKey, cfg.Gemini.Model)
+	geminiProvider, err := ai.NewGeminiProvider(cfg.Gemini.APIKey, cfg.Gemini.Model, metricsManager)
 	if err != nil {
 		log.Error("Failed to initialize Gemini provider", zap.Error(err))
 		os.Exit(1)
@@ -123,7 +123,7 @@ func main() {
 
 	// Initialize translation use case
 	cacheTTL := int64(cfg.Application.CacheTTLTranslation)
-	translationUseCase := service.NewTranslationUseCase(log, translationRepo, cacheInstance, geminiProvider, cacheTTL, securityMiddleware)
+	translationUseCase := service.NewTranslationUseCase(log, translationRepo, cacheInstance, geminiProvider, cacheTTL, securityMiddleware, metricsManager)
 
 	// Initialize Slack client
 	slackClient := slackservice.NewSlackClient(cfg.Slack.BotToken)

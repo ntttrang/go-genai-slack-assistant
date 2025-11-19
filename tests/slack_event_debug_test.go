@@ -45,7 +45,7 @@ func TestTranslationFlowEnglishToVietnamese(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware, nil)
 
 	// Test: Translate English message
 	result, err := tu.Translate(request.Translation{
@@ -93,7 +93,7 @@ func TestTranslationFlowVietnameseToEnglish(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware, nil)
 
 	// Test: Translate Vietnamese message
 	result, err := tu.Translate(request.Translation{

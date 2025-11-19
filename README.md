@@ -2,14 +2,20 @@
 
 A Slack bot that automatically translates English messages to Vietnamese using Google Gemini AI. Built with Go, Clean Architecture, and containerized for easy deployment.
 
-![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go&logoColor=white)
+[![Release](https://img.shields.io/github/v/release/ntttrang/go-genai-slack-assistant?style=flat&logo=github&color=success)](https://github.com/ntttrang/go-genai-slack-assistant/releases)
+[![Build Status](https://img.shields.io/jenkins/build?jobUrl=https://3dd68e143f08.ngrok-free.app/job/go-genai-slack-assistant&style=flat&logo=jenkins&label=Jenkins)](https://3dd68e143f08.ngrok-free.app/job/go-genai-slack-assistant/)
+[![Docker Image](https://img.shields.io/docker/v/minhtrang2106/slack-bot?style=flat&logo=docker&label=Docker&color=2496ED)](https://hub.docker.com/r/minhtrang2106/slack-bot)
+[![Docker Pulls](https://img.shields.io/docker/pulls/minhtrang2106/slack-bot?style=flat&logo=docker)](https://hub.docker.com/r/minhtrang2106/slack-bot)
+
+
+![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go&logoColor=white)
 ![Gin](https://img.shields.io/badge/Gin-Framework-00ADD8?style=flat&logo=go&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-Database-4479A1?style=flat&logo=mysql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Cache-DC382D?style=flat&logo=redis&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=flat&logo=docker&logoColor=white)
-![Gemini](https://img.shields.io/badge/Google-Gemini_AI-4285F4?style=flat&logo=google&logoColor=white)
+[![Gemini](https://img.shields.io/badge/Google-Gemini_AI-4285F4?style=flat&logo=google&logoColor=white)](https://makersuite.google.com/app/apikey)
 
-[![Demo Video](https://blog.n8n.io/content/images/size/w1200/2024/05/post-slack-bot3--1-.png)](https://www.youtube.com/@trang-nguyen-thi-thuy)
+[![Demo Video](https://blog.n8n.io/content/images/size/w1200/2024/05/post-slack-bot3--1-.png)](https://www.youtube.com/watch?v=ihzPYzZtxRY)
 
 ## Features
 
@@ -19,16 +25,17 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 
 ## Tech Stack
 
-- **Language**: Go 1.25+
+- **Language**: Go 1.24.0
 - **Framework**: Gin (HTTP routing)
-- **AI**: Google Gemini API (gemini-1.5-flash)
-- **Database**: MySQL
+- **AI**: Google Generative AI (Gemini API)
+- **Database**: MySQL with GORM ORM
 - **Cache**: Redis
 - **Language Detection**: lingua-go
 - **Architecture**: Clean Architecture with layered structure
 - **Logging**: Uber's zap (structured logging)
 - **Testing**: testify + stretchr for assertions
 - **Containerization**: Docker & Docker Compose
+- **CI/CD**: Jenkins with automated releases to GitHub
 
 ## Architecture
 
@@ -79,23 +86,25 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 │   ├── logger/              # Zap logger setup
 │   ├── metrics/             # Metrics collection
 │   └── ratelimit/           # Rate limiting
-├── database/                # Database migrations
 ├── tests/                   # Integration tests only
-├── docs/                    # Documentation
-├── scripts/                 # Utility scripts
+├── docs/                    # Documentation (*)
+├── scripts/                 # Utility scripts (*)
+├── database/                # Database migrations (*)
 ├── docker-compose.yml       # Docker services
 ├── Dockerfile               # Container image
 └── Makefile                 # Build and deployment commands
 ```
+(*): Optional
 
 ## Getting Started
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.24.0 (or compatible version)
 - Docker & Docker Compose (or standalone MySQL + Redis)
 - Slack workspace admin access
 - Google Gemini API key (free tier available at [Google AI Studio](https://makersuite.google.com/app/apikey))
+- (Optional) Jenkins for CI/CD and automated releases
 
 ### Setup
 
@@ -124,11 +133,7 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 
 4. **Configure Environment**
 
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` with your credentials:
+   Create a `.env` file in the project root with your credentials:
 
    ```bash
    SLACK_BOT_TOKEN=xoxb-...
@@ -137,6 +142,9 @@ A Slack bot that automatically translates English messages to Vietnamese using G
    GEMINI_API_KEY=AIza...
    DATABASE_HOST=localhost
    DATABASE_PORT=3306
+   DATABASE_USER=root
+   DATABASE_PASSWORD=...
+   DATABASE_NAME=slack_bot
    REDIS_HOST=localhost
    REDIS_PORT=6379
    ```
@@ -158,6 +166,92 @@ A Slack bot that automatically translates English messages to Vietnamese using G
    - `make test` - Run tests
    - `make build` - Build the application
 
+## Git Pre-Commit Hooks
+
+This project includes automated pre-commit hooks to ensure code quality before commits. The hooks perform comprehensive validation checks to catch issues early.
+
+### Installation
+
+Install the git hooks by running:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+This will install two hooks:
+- **pre-commit**: Runs code quality and security checks on staged files
+- **commit-msg**: Validates commit message format
+
+### What Gets Checked
+
+**Pre-Commit Hook (runs before each commit):**
+
+1. ✅ **Debugging Statements** - Warns about `fmt.Println` and `println()` usage
+2. ✅ **TODO/FIXME Comments** - Warns about unlinked TODO/FIXME comments
+3. ✅ **Sensitive Data** - Blocks commits containing passwords, API keys, tokens, secrets
+4. ✅ **Code Formatting** - Enforces `go fmt` standard
+5. ✅ **Import Organization** - Checks `goimports` formatting (if installed)
+6. ✅ **Static Analysis** - Runs `go vet` for potential issues
+7. ✅ **Linting** - Runs `golangci-lint` for comprehensive checks (if installed)
+8. ✅ **Module Tidiness** - Ensures `go.mod` and `go.sum` are tidy
+9. ⚠️ **Unit Tests** - Optional (disabled by default for speed)
+
+**Commit-Msg Hook (validates commit message format):**
+
+Enforces [Conventional Commits](https://www.conventionalcommits.org/) format:
+
+```
+type(scope): message
+
+Examples:
+  feat(auth): add login functionality
+  fix(api): handle nil pointer error
+  docs(readme): update installation steps
+```
+
+**Allowed types:**
+- `feat` - New feature
+- `fix` - Bug fix
+- `docs` - Documentation changes
+- `style` - Code style changes (formatting, etc)
+- `refactor` - Code refactoring
+- `test` - Adding or updating tests
+- `chore` - Maintenance tasks
+- `perf` - Performance improvements
+- `ci` - CI/CD changes
+- `build` - Build system changes
+- `revert` - Revert previous commit
+
+### Optional Tools
+
+For full functionality, install these optional tools:
+
+```bash
+# Import organization
+go install golang.org/x/tools/cmd/goimports@latest
+
+# Comprehensive linting
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+```
+
+### Customization
+
+The hooks are located in:
+- `scripts/hooks/pre-commit` - Pre-commit validation script
+- `scripts/hooks/commit-msg` - Commit message validation script
+
+To enable unit tests on every commit, edit `scripts/hooks/pre-commit` and uncomment lines 147-152.
+
+### Bypassing Hooks (Not Recommended)
+
+If you absolutely need to bypass the hooks (emergency situations only):
+
+```bash
+git commit --no-verify -m "your message"
+```
+
+**Note:** This skips all validation checks and should only be used in exceptional cases.
+
 ## API Documentation
 
 Postman Collection - see [go-genai-slack-assistant_postman.json](./docs/go-genai-slack-assistant_postman.json)
@@ -168,9 +262,42 @@ Postman Collection - see [go-genai-slack-assistant_postman.json](./docs/go-genai
 - `GET /health` - Health check endpoint (returns database and Redis status)
 - `GET /metrics` - Metrics endpoint (translation stats, cache hit rate, etc.)
 
+## CI/CD & Deployment
+
+The project includes automated CI/CD pipeline using Jenkins with separated CI and CD stages:
+
+**CI Pipeline (Runs on every Pull Request):**
+1. **Code Quality**: Linting, testing, and code coverage
+2. **Security Scanning**: Gosec, Govulncheck, and container vulnerability scanning (Trivy)
+3. **Build**: Compile Go binary to verify buildability
+
+**CD Pipeline (Runs after PR merge to develop/main):**
+4. **Registry**: Build Docker image and push to Docker Hub
+5. **Deployment**: 
+   - Deploy to staging environment on Render (develop branch)
+   - Deploy to production on Render (main branch)
+   - Health checks and validation
+6. **Release**: Automatic GitHub releases with version tags
+
+**Key Features:**
+- Pull requests must pass all CI stages before merge is allowed
+- CD stages only execute after successful merge to protected branches
+- GitHub branch protection rules enforce quality gates
+
+see the [JENKINS PIPELINE](./docs/jenkins.jpg)
+
+**Release Information:**
+
+- Releases are automatically created on pushes to `main` branch
+- Release version format: `v1.0.{BUILD_NUMBER}` (e.g., `v1.0.42`)
+- Each release includes comprehensive notes with deployment URLs and health check information
+- Docker images are available at [Docker Hub - minhtrang2106/slack-bot](https://hub.docker.com/r/minhtrang2106/slack-bot)
+
+For detailed CI/CD setup, see [docs/QUALITY_GATE_SETUP.md](./docs/QUALITY_GATE_SETUP.md)
+
 ## License
 
-MIT - see [LICENSE](./LICENSE)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

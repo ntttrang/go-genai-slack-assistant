@@ -117,7 +117,7 @@ func TestVietnameseMessageToEnglishTranslation(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware, nil)
 
 	// Test translation Vietnamese to English
 	req := request.Translation{
@@ -167,7 +167,7 @@ func TestEnglishMessageToVietnameseTranslation(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware, nil)
 
 	// Test translation English to Vietnamese
 	req := request.Translation{
@@ -205,7 +205,7 @@ func TestTranslationUseCaseIntegration(t *testing.T) {
 	outputValidator := security.NewOutputValidator(10000)
 	logger := zap.NewNop()
 	securityMiddleware := middleware.NewSecurityMiddleware(inputValidator, outputValidator, logger, true, true)
-	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware)
+	tu := service.NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 86400, securityMiddleware, nil)
 
 	// Test translation
 	req := request.Translation{
