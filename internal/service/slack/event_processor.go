@@ -254,6 +254,8 @@ func (ep *eventProcessorImpl) handleMessageEvent(ctx context.Context, event map[
 		Text:           text,
 		SourceLanguage: detectedLang,
 		TargetLanguage: targetLang,
+		UserID:         userID,
+		ChannelID:      channelID,
 	}
 
 	result, err := ep.translationUseCase.Translate(translationReq)

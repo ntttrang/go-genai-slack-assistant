@@ -11,6 +11,7 @@ import (
 	"github.com/ntttrang/go-genai-slack-assistant/internal/dto/response"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/model"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/metrics"
 	"go.uber.org/zap"
 )
 
@@ -35,6 +36,7 @@ type TranslationUseCase struct {
 	translator         Translator
 	cacheTTL           int64
 	securityMiddleware *middleware.SecurityMiddleware
+	metrics            *metrics.Metrics
 }
 
 func NewTranslationUseCase(
@@ -44,6 +46,7 @@ func NewTranslationUseCase(
 	translator Translator,
 	cacheTTL int64,
 	securityMiddleware *middleware.SecurityMiddleware,
+	metrics *metrics.Metrics,
 ) *TranslationUseCase {
 	return &TranslationUseCase{
 		logger:             logger,
@@ -52,11 +55,28 @@ func NewTranslationUseCase(
 		translator:         translator,
 		cacheTTL:           cacheTTL,
 		securityMiddleware: securityMiddleware,
+		metrics:            metrics,
 	}
 }
 
 func (tu *TranslationUseCase) Translate(req request.Translation) (response.Translation, error) {
+	startTime := time.Now()
+	var success bool
+	var userID, channelID string
+
+	// Record metrics at the end
+	defer func() {
+		duration := time.Since(startTime)
+		if tu.metrics != nil {
+			tu.metrics.RecordTranslationRequest(userID, channelID, duration, success)
+		}
+	}()
+
 	fmt.Println("Slack sent: ", req.Text)
+
+	// Extract user and channel IDs if available
+	userID = req.UserID
+	channelID = req.ChannelID
 
 	// 1. Extract and preserve formatting before validation
 	preserver := NewFormatPreserver()
@@ -65,6 +85,9 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 	// 2. Validate input
 	inputValidation, err := tu.securityMiddleware.ValidateInput(textWithoutFormat)
 	if err != nil {
+		if tu.metrics != nil {
+			tu.metrics.RecordError("input_validation_failed")
+		}
 		return response.Translation{}, fmt.Errorf("input validation failed: %w", err)
 	}
 
@@ -77,8 +100,13 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 	// 4. Try to get from cache
 	cachedResult, err := tu.cache.Get(cacheKey)
 	if err == nil && cachedResult != "" {
+		// Record cache hit
+		if tu.metrics != nil {
+			tu.metrics.RecordCacheHit()
+		}
 		// Restore formatting to cached result
 		restoredResult := preserver.Restore(cachedResult)
+		success = true
 		return response.Translation{
 			OriginalText:   req.Text,
 			TranslatedText: restoredResult,
@@ -90,9 +118,14 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 	// 5. Try to get from database
 	existingTranslation, err := tu.repo.GetByHash(hash)
 	if (err == nil && existingTranslation != nil) || (err != nil && err.Error() != "record not found") {
+		// Record cache hit (from DB)
+		if tu.metrics != nil {
+			tu.metrics.RecordCacheHit()
+		}
 		cachedTranslated := existingTranslation.TranslatedText
 		_ = tu.cache.Set(cacheKey, cachedTranslated, tu.cacheTTL)
 		restoredResult := preserver.Restore(cachedTranslated)
+		success = true
 		return response.Translation{
 			OriginalText:   req.Text,
 			TranslatedText: restoredResult,
@@ -101,10 +134,18 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 		}, nil
 	}
 
+	// Record cache miss - need to call AI
+	if tu.metrics != nil {
+		tu.metrics.RecordCacheMiss()
+	}
+
 	// 6. Call AI to translate with cleaned text (no formatting)
 	tu.logger.Info("[Start] Call to AI provider to translate")
 	translatedText, err := tu.translator.Translate(sanitizedText, req.SourceLanguage, req.TargetLanguage)
 	if err != nil {
+		if tu.metrics != nil {
+			tu.metrics.RecordError("translation_failed")
+		}
 		return response.Translation{}, fmt.Errorf("translation failed: %w", err)
 	}
 	tu.logger.Info("[End] Call to AI provider to translate")
@@ -112,6 +153,9 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 	// 7. Validate output
 	outputValidation, err := tu.securityMiddleware.ValidateOutput(translatedText, sanitizedText)
 	if err != nil {
+		if tu.metrics != nil {
+			tu.metrics.RecordError("output_validation_failed")
+		}
 		return response.Translation{}, fmt.Errorf("output validation failed: %w", err)
 	}
 
@@ -138,6 +182,9 @@ func (tu *TranslationUseCase) Translate(req request.Translation) (response.Trans
 
 	// 10. Store in cache (without formatting)
 	_ = tu.cache.Set(cacheKey, translatedText, tu.cacheTTL)
+
+	// Mark as successful
+	success = true
 
 	return response.Translation{
 		OriginalText:   req.Text,
