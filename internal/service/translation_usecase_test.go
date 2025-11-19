@@ -144,7 +144,7 @@ func TestTranslationUseCase_Translate(t *testing.T) {
 
 			securityMiddleware := setupSecurityMiddleware()
 			logger := zap.NewNop()
-			useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, tt.cacheTTL, securityMiddleware)
+			useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, tt.cacheTTL, securityMiddleware, nil)
 
 			// Execute
 			resp, err := useCase.Translate(tt.input)
@@ -228,7 +228,7 @@ func TestTranslationUseCase_DetectLanguage(t *testing.T) {
 
 			securityMiddleware := setupSecurityMiddleware()
 			logger := zap.NewNop()
-			useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 3600, securityMiddleware)
+			useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 3600, securityMiddleware, nil)
 
 			// Execute
 			lang, err := useCase.DetectLanguage(tt.inputText)
@@ -254,7 +254,7 @@ func TestTranslationUseCase_ImplementsInterface(t *testing.T) {
 
 	securityMiddleware := setupSecurityMiddleware()
 	logger := zap.NewNop()
-	useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 3600, securityMiddleware)
+	useCase := NewTranslationUseCase(logger, mockRepo, mockCache, mockTranslator, 3600, securityMiddleware, nil)
 
 	// Assert that usecase implements TranslationService interface
 	var _ TranslationService = useCase

@@ -8,6 +8,8 @@ type Translation struct {
 	Text           string `json:"text" binding:"required"`
 	SourceLanguage string `json:"source_language" binding:"required"`
 	TargetLanguage string `json:"target_language" binding:"required"`
+	UserID         string `json:"user_id,omitempty"`
+	ChannelID      string `json:"channel_id,omitempty"`
 }
 
 // Validate validates the translation request

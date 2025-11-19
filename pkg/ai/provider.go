@@ -5,15 +5,17 @@ import (
 	"fmt"
 
 	"github.com/google/generative-ai-go/genai"
+	"github.com/ntttrang/go-genai-slack-assistant/pkg/metrics"
 	"google.golang.org/api/option"
 )
 
 type GeminiProvider struct {
-	client *genai.Client
-	model  string
+	client  *genai.Client
+	model   string
+	metrics *metrics.Metrics
 }
 
-func NewGeminiProvider(apiKey string, model string) (*GeminiProvider, error) {
+func NewGeminiProvider(apiKey string, model string, metrics *metrics.Metrics) (*GeminiProvider, error) {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
@@ -21,8 +23,9 @@ func NewGeminiProvider(apiKey string, model string) (*GeminiProvider, error) {
 	}
 
 	return &GeminiProvider{
-		client: client,
-		model:  model,
+		client:  client,
+		model:   model,
+		metrics: metrics,
 	}, nil
 }
 
@@ -68,6 +71,12 @@ Translation:`, sourceLanguage, targetLanguage, text)
 		return "", fmt.Errorf("failed to generate translation: %w", err)
 	}
 
+	// Record token usage
+	if gp.metrics != nil && resp.UsageMetadata != nil {
+		totalTokens := int64(resp.UsageMetadata.PromptTokenCount + resp.UsageMetadata.CandidatesTokenCount)
+		gp.metrics.RecordGeminiTokens(totalTokens)
+	}
+
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
 		return "", fmt.Errorf("no response from Gemini")
 	}
@@ -111,6 +120,12 @@ Language Code:`, text)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return "", fmt.Errorf("failed to detect language: %w", err)
+	}
+
+	// Record token usage
+	if gp.metrics != nil && resp.UsageMetadata != nil {
+		totalTokens := int64(resp.UsageMetadata.PromptTokenCount + resp.UsageMetadata.CandidatesTokenCount)
+		gp.metrics.RecordGeminiTokens(totalTokens)
 	}
 
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {

@@ -15,7 +15,7 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=flat&logo=docker&logoColor=white)
 [![Gemini](https://img.shields.io/badge/Google-Gemini_AI-4285F4?style=flat&logo=google&logoColor=white)](https://makersuite.google.com/app/apikey)
 
-[![Demo Video](https://blog.n8n.io/content/images/size/w1200/2024/05/post-slack-bot3--1-.png)](https://www.youtube.com/@trang-nguyen-thi-thuy)
+[![Demo Video](https://blog.n8n.io/content/images/size/w1200/2024/05/post-slack-bot3--1-.png)](https://www.youtube.com/watch?v=ihzPYzZtxRY)
 
 ## Features
 
@@ -86,14 +86,15 @@ A Slack bot that automatically translates English messages to Vietnamese using G
 │   ├── logger/              # Zap logger setup
 │   ├── metrics/             # Metrics collection
 │   └── ratelimit/           # Rate limiting
-├── database/                # Database migrations
 ├── tests/                   # Integration tests only
-├── docs/                    # Documentation
-├── scripts/                 # Utility scripts
+├── docs/                    # Documentation (*)
+├── scripts/                 # Utility scripts (*)
+├── database/                # Database migrations (*)
 ├── docker-compose.yml       # Docker services
 ├── Dockerfile               # Container image
 └── Makefile                 # Build and deployment commands
 ```
+(*): Optional
 
 ## Getting Started
 
