@@ -17,6 +17,7 @@ type Config struct {
 	Gemini      GeminiConfig
 	Application ApplicationConfig
 	Security    SecurityConfig
+	GoldPrice   GoldPriceConfig
 }
 
 // ServerConfig holds HTTP server configuration
@@ -56,15 +57,15 @@ type GeminiConfig struct {
 
 // ApplicationConfig holds general application configuration
 type ApplicationConfig struct {
-	LogLevel                  string
-	Environment               string
-	CacheTTLTranslation       time.Duration
-	CacheTTLChannelConfig     time.Duration
-	RateLimitPerUser          int
-	RateLimitPerChannel       int
-	MaxMessageLength          int
-	QueueBufferSize           int
-	QueueIdleTimeout          time.Duration
+	LogLevel              string
+	Environment           string
+	CacheTTLTranslation   time.Duration
+	CacheTTLChannelConfig time.Duration
+	RateLimitPerUser      int
+	RateLimitPerChannel   int
+	MaxMessageLength      int
+	QueueBufferSize       int
+	QueueIdleTimeout      time.Duration
 }
 
 // SecurityConfig holds security configuration
@@ -74,6 +75,12 @@ type SecurityConfig struct {
 	BlockHighThreat       bool `env:"BLOCK_HIGH_THREAT"`
 	LogSuspiciousActivity bool `env:"LOG_SUSPICIOUS_ACTIVITY"`
 	MaxOutputLength       int  `env:"MAX_OUTPUT_LENGTH"`
+}
+
+// GoldPriceConfig holds configuration for the daily gold price cron job
+type GoldPriceConfig struct {
+	ChannelID    string
+	CronSchedule string
 }
 
 // Load reads configuration from environment variables with default values
@@ -105,15 +112,15 @@ func Load() (*Config, error) {
 			Model:  getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
 		},
 		Application: ApplicationConfig{
-			LogLevel:                  getEnv("LOG_LEVEL", "info"),
-			Environment:               getEnv("ENVIRONMENT", "development"),
-			CacheTTLTranslation:       time.Duration(getEnvInt("CACHE_TTL_TRANSLATION", 86400)) * time.Second,
-			CacheTTLChannelConfig:     time.Duration(getEnvInt("CACHE_TTL_CHANNEL_CONFIG", 3600)) * time.Second,
-			RateLimitPerUser:          getEnvInt("RATE_LIMIT_PER_USER", 10),
-			RateLimitPerChannel:       getEnvInt("RATE_LIMIT_PER_CHANNEL", 30),
-			MaxMessageLength:          getEnvInt("MAX_MESSAGE_LENGTH", 10240),
-			QueueBufferSize:           getEnvInt("QUEUE_BUFFER_SIZE", 100),
-			QueueIdleTimeout:          time.Duration(getEnvInt("QUEUE_IDLE_TIMEOUT", 300)) * time.Second,
+			LogLevel:              getEnv("LOG_LEVEL", "info"),
+			Environment:           getEnv("ENVIRONMENT", "development"),
+			CacheTTLTranslation:   time.Duration(getEnvInt("CACHE_TTL_TRANSLATION", 86400)) * time.Second,
+			CacheTTLChannelConfig: time.Duration(getEnvInt("CACHE_TTL_CHANNEL_CONFIG", 3600)) * time.Second,
+			RateLimitPerUser:      getEnvInt("RATE_LIMIT_PER_USER", 10),
+			RateLimitPerChannel:   getEnvInt("RATE_LIMIT_PER_CHANNEL", 30),
+			MaxMessageLength:      getEnvInt("MAX_MESSAGE_LENGTH", 10240),
+			QueueBufferSize:       getEnvInt("QUEUE_BUFFER_SIZE", 100),
+			QueueIdleTimeout:      time.Duration(getEnvInt("QUEUE_IDLE_TIMEOUT", 300)) * time.Second,
 		},
 		Security: SecurityConfig{
 			MaxInputLength:        getEnvInt("MAX_INPUT_LENGTH", 5000),
@@ -121,6 +128,10 @@ func Load() (*Config, error) {
 			BlockHighThreat:       getEnvBool("BLOCK_HIGH_THREAT", true),
 			LogSuspiciousActivity: getEnvBool("LOG_SUSPICIOUS_ACTIVITY", true),
 			MaxOutputLength:       getEnvInt("MAX_OUTPUT_LENGTH", 10000),
+		},
+		GoldPrice: GoldPriceConfig{
+			ChannelID:    getEnv("GOLD_PRICE_CHANNEL_ID", ""),
+			CronSchedule: getEnv("GOLD_PRICE_CRON_SCHEDULE", "0 17 * * *"),
 		},
 	}
 
