@@ -196,7 +196,6 @@ jobs:
           name: coverage-report
 
       - name: SonarCloud Scan
-        if: ${{ secrets.SONARCLOUD_TOKEN != '' }}
         uses: SonarSource/sonarqube-scan-action@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
