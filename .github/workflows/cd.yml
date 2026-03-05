@@ -3,6 +3,16 @@ name: CD
 on:
   push:
     branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Branch to deploy (main = production, develop = staging)"
+        required: false
+        default: "main"
+        type: choice
+        options:
+          - main
+          - develop
 
 env:
   GO_VERSION: "1.24.1"
