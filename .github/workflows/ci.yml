@@ -1,0 +1,248 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  GO_VERSION: "1.24.1"
+  GOTOOLCHAIN: auto
+  CGO_ENABLED: "0"
+  GOOS: linux
+  GOARCH: amd64
+
+jobs:
+  # ─── Stage 2+3: Environment Setup & Dependencies ──────────────────────────
+  deps:
+    name: "Stage 2-3: Setup & Dependencies"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download & verify modules
+        run: |
+          go version
+          go env
+          go mod download
+          go mod verify
+          go mod tidy
+          echo "Dependencies check completed successfully"
+
+  # ─── Stage 4: Lint (parallel) ─────────────────────────────────────────────
+  lint:
+    name: "Stage 4: Lint"
+    runs-on: ubuntu-latest
+    needs: deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run golangci-lint
+        run: |
+          which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+          golangci-lint run --out-format=json ./... > golangci-lint-report.json || true
+          echo "Golangci-lint scan completed"
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golangci-lint-report
+          path: golangci-lint-report.json
+          retention-days: 7
+
+  # ─── Stage 5.1: Gosec (parallel) ──────────────────────────────────────────
+  gosec:
+    name: "Stage 5.1: Gosec"
+    runs-on: ubuntu-latest
+    needs: deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run gosec
+        run: |
+          which gosec > /dev/null || (echo "Installing gosec..." && go install github.com/securego/gosec/v2/cmd/gosec@latest)
+          gosec -fmt=json -out=gosec-report.json \
+            -exclude-dir=.gomodcache \
+            -exclude-dir=.go \
+            -exclude-dir=.gocache \
+            ./... || true
+          echo "Gosec scan completed"
+
+      - name: Upload gosec report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosec-report
+          path: gosec-report.json
+          retention-days: 7
+
+  # ─── Stage 5.2: Govulncheck (parallel) ────────────────────────────────────
+  govulncheck:
+    name: "Stage 5.2: Govulncheck"
+    runs-on: ubuntu-latest
+    needs: deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run govulncheck
+        run: |
+          which govulncheck > /dev/null || (echo "Installing govulncheck..." && go install golang.org/x/vuln/cmd/govulncheck@latest)
+          govulncheck -json ./... > govulncheck-report.json 2>&1 || true
+          echo "Govulncheck scan completed"
+
+      - name: Upload govulncheck report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: govulncheck-report
+          path: govulncheck-report.json
+          retention-days: 7
+
+  # ─── Stage 5.3: Trivy FS scan (parallel) ──────────────────────────────────
+  trivy:
+    name: "Stage 5.3: Trivy FS Scan"
+    runs-on: ubuntu-latest
+    needs: deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          severity: HIGH,CRITICAL
+          format: json
+          output: trivy-report.json
+          skip-dirs: .gomodcache
+
+      - name: Upload Trivy FS report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-report
+          path: trivy-report.json
+          retention-days: 7
+
+  # ─── Stage 6: Unit Tests (parallel) ───────────────────────────────────────
+  test:
+    name: "Stage 6: Unit Tests"
+    runs-on: ubuntu-latest
+    needs: deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run unit tests with coverage
+        run: |
+          go test -v -coverprofile=coverage.out $(go list ./... | grep -v '/tests')
+          go tool cover -html=coverage.out -o coverage.html
+          echo "Unit tests completed"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+          retention-days: 7
+
+  # ─── Stage 7: SonarCloud Quality Analysis ─────────────────────────────────
+  sonarcloud:
+    name: "Stage 7: SonarCloud Analysis"
+    runs-on: ubuntu-latest
+    needs: [lint, gosec, govulncheck, trivy, test]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for SonarCloud blame information
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ─── Stage 8: Integration Tests ───────────────────────────────────────────
+  integration-test:
+    name: "Stage 8: Integration Tests"
+    runs-on: ubuntu-latest
+    needs: sonarcloud
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run integration tests
+        run: |
+          go test -v -timeout=10m ./tests/...
+          echo "Integration tests completed"
+
+  # ─── Stage 9: Build ───────────────────────────────────────────────────────
+  build:
+    name: "Stage 9: Build"
+    runs-on: ubuntu-latest
+    needs: integration-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build binary
+        run: |
+          mkdir -p bin
+          go build -o bin/slack-bot cmd/api/main.go
+          echo "Build completed successfully"
+          ls -lah bin/slack-bot
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: slack-bot-binary
+          path: bin/slack-bot
+          retention-days: 7
