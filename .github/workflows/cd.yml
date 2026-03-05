@@ -43,7 +43,6 @@ jobs:
     environment: slackbot-env
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
-      image_full: ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -108,12 +107,13 @@ jobs:
     steps:
       - name: Trigger Render staging deploy
         run: |
-          echo "Deploying image: ${{ needs.docker.outputs.image_full }}"
+          IMAGE_URL="${{ env.DOCKER_IMAGE }}:${{ needs.docker.outputs.image_tag }}"
+          echo "Deploying image: $IMAGE_URL"
           HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" -X POST \
             "https://api.render.com/v1/services/${{ secrets.RENDER_STAGING_SERVICE_ID }}/deploys" \
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{"clearCache":"do_not_clear","imageUrl":"${{ needs.docker.outputs.image_full }}"}')
+            -d "{\"clearCache\":\"do_not_clear\",\"imageUrl\":\"$IMAGE_URL\"}")
           cat response.json
           echo "HTTP status: $HTTP_STATUS"
           if [ "$HTTP_STATUS" != "201" ]; then
@@ -151,12 +151,13 @@ jobs:
     steps:
       - name: Trigger Render production deploy
         run: |
-          echo "Deploying image: ${{ needs.docker.outputs.image_full }}"
+          IMAGE_URL="${{ env.DOCKER_IMAGE }}:${{ needs.docker.outputs.image_tag }}"
+          echo "Deploying image: $IMAGE_URL"
           HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" -X POST \
             "https://api.render.com/v1/services/${{ secrets.RENDER_PRODUCTION_SERVICE_ID }}/deploys" \
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{"clearCache":"do_not_clear","imageUrl":"${{ needs.docker.outputs.image_full }}"}')
+            -d "{\"clearCache\":\"do_not_clear\",\"imageUrl\":\"$IMAGE_URL\"}")
           cat response.json
           echo "HTTP status: $HTTP_STATUS"
           if [ "$HTTP_STATUS" != "201" ]; then
