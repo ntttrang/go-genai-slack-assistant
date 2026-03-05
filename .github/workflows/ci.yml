@@ -184,6 +184,7 @@ jobs:
     name: "Stage 7: SonarCloud Analysis"
     runs-on: ubuntu-latest
     needs: [lint, gosec, govulncheck, trivy, test]
+    environment: slackbot-env
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
