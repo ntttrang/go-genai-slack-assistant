@@ -14,11 +14,14 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	_ "net/http/pprof"
+
 	"github.com/ntttrang/go-genai-slack-assistant/internal/controller"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/middleware"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/queue"
 	gormmysql "github.com/ntttrang/go-genai-slack-assistant/internal/repository/gorm-mysql"
 	"github.com/ntttrang/go-genai-slack-assistant/internal/service"
+	"github.com/ntttrang/go-genai-slack-assistant/internal/service/goldprice"
 	slackservice "github.com/ntttrang/go-genai-slack-assistant/internal/service/slack"
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/ai"
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/cache"
@@ -27,6 +30,17 @@ import (
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/metrics"
 	"github.com/ntttrang/go-genai-slack-assistant/pkg/security"
 )
+
+func startPprofServer(log *zap.Logger) {
+	go func() {
+		log.Info("Starting pprof server on localhost:6060")
+		// The pprof handlers are already registered with http.DefaultServeMux
+		// because we imported _ "net/http/pprof"
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			log.Error("pprof server failed", zap.Error(err))
+		}
+	}()
+}
 
 func main() {
 	// Initialize logger
@@ -49,6 +63,11 @@ func main() {
 	log.Info("Configuration loaded successfully",
 		zap.String("environment", cfg.Application.Environment),
 		zap.String("server_address", fmt.Sprintf("%s:%s", cfg.Server.Address, cfg.Server.Port)))
+
+	// Start pprof server (only in non-production environments)
+	//if cfg.Application.Environment != "production" {
+	startPprofServer(log)
+	//}
 
 	// Initialize database
 	dbConfig := database.DBConfig{
@@ -128,6 +147,13 @@ func main() {
 	// Initialize Slack client
 	slackClient := slackservice.NewSlackClient(cfg.Slack.BotToken)
 
+	// Initialize and start gold price cron job
+	goldScraper := goldprice.NewScraper()
+	goldCronSvc := goldprice.NewCronService(goldScraper, slackClient, cfg.GoldPrice.ChannelID, cfg.GoldPrice.CronSchedule, log)
+	if err := goldCronSvc.Start(); err != nil {
+		log.Error("Failed to start gold price cron job", zap.Error(err))
+	}
+
 	// Initialize event processor (implements slack.EventProcessor interface)
 	eventProc := slackservice.NewEventProcessor(translationUseCase, slackClient, log)
 
@@ -144,7 +170,6 @@ func main() {
 
 	// Initialize router
 	r := gin.Default()
-
 	// Health check endpoint
 	healthHandler := controller.NewHealthCheckHandler(sqlDB, redisClient, log)
 	r.GET("/health", healthHandler.HandleHealthGin)
@@ -193,7 +218,11 @@ func main() {
 	case sig := <-sigChan:
 		log.Info("Received shutdown signal", zap.String("signal", sig.String()))
 
-		// Step 1: Shutdown worker pool (drain remaining messages)
+		// Step 1: Stop gold price cron job
+		log.Info("Stopping gold price cron job...")
+		goldCronSvc.Stop()
+
+		// Step 2: Shutdown worker pool (drain remaining messages)
 		log.Info("Shutting down worker pool...")
 		if err := workerPool.Shutdown(30 * time.Second); err != nil {
 			log.Error("Worker pool shutdown error", zap.Error(err))
@@ -201,7 +230,7 @@ func main() {
 			log.Info("Worker pool stopped successfully")
 		}
 
-		// Step 2: Shutdown HTTP server
+		// Step 3: Shutdown HTTP server
 		log.Info("Shutting down HTTP server...")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
